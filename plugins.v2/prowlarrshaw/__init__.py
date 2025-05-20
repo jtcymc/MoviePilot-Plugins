@@ -1,18 +1,17 @@
 # _*_ coding: utf-8 _*_
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Tuple
 from datetime import datetime, timedelta
 import re
-import requests
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.plugins import _PluginBase
-from app.schemas.types import EventType
-from app.core.event import eventmanager, Event
-from app.utils import RequestUtils, StringUtils, ExceptionUtils
-from app.indexer.indexerConf import IndexerConf
 from app.core.config import settings
+from modules.indexer.indexerConf import IndexerConf
+from utils.http import RequestUtils
+from utils.string import StringUtils
+from app.log import logger
 
 class ProwlarrShaw(_PluginBase):
     # 插件名称
@@ -38,6 +37,7 @@ class ProwlarrShaw(_PluginBase):
     _scheduler = None
     _cron = None
     _enabled = False
+    _proxy = False
     _host = ""
     _api_key = ""
     _onlyonce = False
@@ -56,7 +56,8 @@ class ProwlarrShaw(_PluginBase):
                 if self._host.endswith('/'):
                     self._host = self._host.rstrip('/')
             self._api_key = config.get("api_key")
-            self._enabled = self.get_status()
+            self._enabled = config.get("enabled")
+            self._proxy = config.get("proxy")
             self._onlyonce = config.get("onlyonce")
             self._cron = config.get("cron")
             if not StringUtils.is_string_and_not_empty(self._cron):
@@ -159,7 +160,7 @@ class ProwlarrShaw(_PluginBase):
             }) for v in ret_indexers]
             return indexers
         except Exception as e:
-            ExceptionUtils.exception_traceback(e)
+            logger.error(str(e))
             return []
 
     def search(self, indexer, keyword, page):
@@ -222,7 +223,7 @@ class ProwlarrShaw(_PluginBase):
                 torrents.append(tmp_dict)
             return torrents
         except Exception as e:
-            ExceptionUtils.exception_traceback(e)
+            logger.error(str(e))
             return []
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
@@ -233,6 +234,43 @@ class ProwlarrShaw(_PluginBase):
             {
                 'component': 'VForm',
                 'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'enabled',
+                                            'label': '启用插件',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 4
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'proxy',
+                                            'label': '使用代理服务器',
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
                     {
                         'component': 'VRow',
                         'content': [
@@ -329,24 +367,41 @@ class ProwlarrShaw(_PluginBase):
         """
         if not isinstance(self._sites, list) or len(self._sites) <= 0:
             return []
-        return [
-            {
-                'component': 'VCard',
+
+        items = []
+        for site in self._sites:
+            items.append({
+                'component': 'tr',
                 'content': [
                     {
-                        'component': 'VCardTitle',
-                        'props': {
-                            'text': '索引列表'
-                        }
+                        'component': 'td',
+                        'text': site.id
                     },
                     {
-                        'component': 'VCardText',
+                        'component': 'td',
+                        'text': site.domain
+                    },
+                    {
+                        'component': 'td',
+                        'text': str(site.public)
+                    }
+                ]
+            })
+
+        return [
+            {
+                'component': 'VRow',
+                'content': [
+                    {
+                        'component': 'VCol',
+                        'props': {
+                            'cols': 12
+                        },
                         'content': [
                             {
                                 'component': 'VTable',
                                 'props': {
-                                    'hover': True,
-                                    'density': 'compact'
+                                    'hover': True
                                 },
                                 'content': [
                                     {
@@ -358,20 +413,23 @@ class ProwlarrShaw(_PluginBase):
                                                     {
                                                         'component': 'th',
                                                         'props': {
-                                                            'text': 'id'
-                                                        }
+                                                            'class': 'text-start ps-4'
+                                                        },
+                                                        'text': 'id'
                                                     },
                                                     {
                                                         'component': 'th',
                                                         'props': {
-                                                            'text': '索引'
-                                                        }
+                                                            'class': 'text-start ps-4'
+                                                        },
+                                                        'text': '索引'
                                                     },
                                                     {
                                                         'component': 'th',
                                                         'props': {
-                                                            'text': '是否公开'
-                                                        }
+                                                            'class': 'text-start ps-4'
+                                                        },
+                                                        'text': '是否公开'
                                                     }
                                                 ]
                                             }
@@ -379,34 +437,7 @@ class ProwlarrShaw(_PluginBase):
                                     },
                                     {
                                         'component': 'tbody',
-                                        'content': [
-                                            {
-                                                'component': 'tr',
-                                                'props': {
-                                                    'id': f'indexer_{site.id}'
-                                                },
-                                                'content': [
-                                                    {
-                                                        'component': 'td',
-                                                        'props': {
-                                                            'text': site.id
-                                                        }
-                                                    },
-                                                    {
-                                                        'component': 'td',
-                                                        'props': {
-                                                            'text': site.domain
-                                                        }
-                                                    },
-                                                    {
-                                                        'component': 'td',
-                                                        'props': {
-                                                            'text': site.public
-                                                        }
-                                                    }
-                                                ]
-                                            } for site in self._sites
-                                        ]
+                                        'content': items
                                     }
                                 ]
                             }
