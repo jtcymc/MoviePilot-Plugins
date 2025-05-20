@@ -1,0 +1,26 @@
+{
+    "JackettShaw": {
+        "name": "Jackett",
+        "description": "索引器支持检索Jackett站点资源",
+        "labels": "索引器,Jackett",
+        "version": "1.0",
+        "icon": "Jackett.png",
+        "author": "shaw",
+        "level": 1,
+        "history": {
+            "v1.0": "适配MoviePilot V2 版本"
+        }
+    },
+    "ProwlarrShaw": {
+        "name": "Prowlarr",
+        "description": "索引器支持检索Prowlarr站点资源",
+        "labels": "索引器,Prowlarr",
+        "version": "1.0",
+        "icon": "Prowlarr.png",
+        "author": "shaw",
+        "level": 1,
+        "history": {
+            "v1.0": "适配MoviePilot V2 版本"
+        }
+    }
+}
