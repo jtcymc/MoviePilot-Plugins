@@ -1,13 +1,4 @@
 # _*_ coding: utf-8 _*_
-# author: shaw
-# date: 2025/05/20 15:19:39
-# since: 1.0
-# version: 1.0
-
-"""
-文件说明： 
-"""
-
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import xml.dom.minidom
@@ -15,13 +6,14 @@ import requests
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-
+from app.log import logger
 from app.plugins import _PluginBase
-from app.schemas.types import EventType
-from app.core.event import eventmanager, Event
-from app.utils import RequestUtils, StringUtils, ExceptionUtils, DomUtils
-from app.indexer.indexerConf import IndexerConf
 from app.core.config import settings
+from modules.indexer.indexerConf import IndexerConf
+from utils.dom import DomUtils
+from utils.http import RequestUtils
+from utils.string import StringUtils
+
 
 class JackettShaw(_PluginBase):
     # 插件名称
@@ -47,6 +39,7 @@ class JackettShaw(_PluginBase):
     _scheduler = None
     _cron = None
     _enabled = False
+    _proxy = False
     _host = ""
     _api_key = ""
     _password = ""
@@ -67,7 +60,8 @@ class JackettShaw(_PluginBase):
                     self._host = self._host.rstrip('/')
             self._api_key = config.get("api_key")
             self._password = config.get("password")
-            self._enabled = self.get_status()
+            self._enabled = config.get("enabled")
+            self._proxy = config.get("proxy")
             self._onlyonce = config.get("onlyonce")
             self._cron = config.get("cron")
             if not StringUtils.is_string_and_not_empty(self._cron):
@@ -87,7 +81,7 @@ class JackettShaw(_PluginBase):
             if self._onlyonce:
                 logger.info(f"【{self.plugin_name}】开始获取索引器状态")
                 self._scheduler.add_job(self.get_status, 'date',
-                                      run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3))
+                                        run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3))
                 # 关闭一次性开关
                 self._onlyonce = False
                 self.__update_config()
@@ -152,13 +146,15 @@ class JackettShaw(_PluginBase):
         res = RequestUtils(headers=headers, session=session).post_res(
             url=f"{self._host}/UI/Dashboard",
             data={"password": self._password},
-            params={"password": self._password}
+            params={"password": self._password},
+            proxies=settings.PROXY if self._proxy else None
         )
         if res and session.cookies:
             cookie = session.cookies.get_dict()
         indexer_query_url = f"{self._host}/api/v2.0/indexers?configured=true"
         try:
-            ret = RequestUtils(headers=headers, cookies=cookie).get_res(indexer_query_url)
+            ret = RequestUtils(headers=headers, cookies=cookie).get_res(indexer_query_url,
+                                                                        proxies=settings.PROXY if self._proxy else None)
             if not ret:
                 return []
             if not RequestUtils.check_response_is_valid_json(ret):
@@ -177,7 +173,7 @@ class JackettShaw(_PluginBase):
             }) for v in ret.json()]
             return indexers
         except Exception as e:
-            ExceptionUtils.exception_traceback(e)
+            logger.error(str(e))
             return []
 
     def search(self, indexer, keyword, page):
@@ -199,8 +195,20 @@ class JackettShaw(_PluginBase):
             logger.warn(f"【{self.plugin_name}】{indexer.name} 返回数据：{len(result_array)}")
             return result_array
 
-    @staticmethod
-    def __parse_torznabxml(url):
+    def get_api(self) -> List[Dict[str, Any]]:
+        """
+        获取插件API
+        [{
+            "path": "/xx",
+            "endpoint": self.xxx,
+            "methods": ["GET", "POST"],
+            "summary": "API说明"
+        }]
+        """
+
+    pass
+
+    def __parse_torznabxml(self, url):
         """
         从torznab xml中解析种子信息
         :param url: URL地址
@@ -209,9 +217,10 @@ class JackettShaw(_PluginBase):
         if not url:
             return []
         try:
-            ret = RequestUtils(timeout=10).get_res(url)
+            ret = RequestUtils(timeout=10).get_res(url,
+                                                   proxies=settings.PROXY if self._proxy else None)
         except Exception as e:
-            ExceptionUtils.exception_traceback(e)
+            logger.error(str(e))
             return []
         if not ret:
             return []
@@ -229,10 +238,10 @@ class JackettShaw(_PluginBase):
                 try:
                     # indexer id
                     indexer_id = DomUtils.tag_value(item, "jackettindexer", "id",
-                                                  default=DomUtils.tag_value(item, "jackettindexer", "id", ""))
+                                                    default=DomUtils.tag_value(item, "jackettindexer", "id", ""))
                     # indexer
                     indexer = DomUtils.tag_value(item, "jackettindexer",
-                                               default=DomUtils.tag_value(item, "jackettindexer", default=""))
+                                                 default=DomUtils.tag_value(item, "jackettindexer", default=""))
 
                     # 标题
                     title = DomUtils.tag_value(item, "title", default="")
@@ -296,10 +305,10 @@ class JackettShaw(_PluginBase):
                     }
                     torrents.append(tmp_dict)
                 except Exception as e:
-                    ExceptionUtils.exception_traceback(e)
+                    logger.error(str(e))
                     continue
         except Exception as e:
-            ExceptionUtils.exception_traceback(e)
+            logger.error(str(e))
             pass
 
         return torrents
@@ -315,6 +324,43 @@ class JackettShaw(_PluginBase):
                     {
                         'component': 'VRow',
                         'content': [
+                            {
+                                'component': 'VRow',
+                                'content': [
+                                    {
+                                        'component': 'VCol',
+                                        'props': {
+                                            'cols': 12,
+                                            'md': 4
+                                        },
+                                        'content': [
+                                            {
+                                                'component': 'VSwitch',
+                                                'props': {
+                                                    'model': 'enabled',
+                                                    'label': '启用插件',
+                                                }
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        'component': 'VCol',
+                                        'props': {
+                                            'cols': 12,
+                                            'md': 4
+                                        },
+                                        'content': [
+                                            {
+                                                'component': 'VSwitch',
+                                                'props': {
+                                                    'model': 'proxy',
+                                                    'label': '使用代理服务器',
+                                                }
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
                             {
                                 'component': 'VCol',
                                 'props': {
@@ -420,6 +466,8 @@ class JackettShaw(_PluginBase):
                 ]
             }
         ], {
+            "enabled": False,
+            "proxy": False,
             "host": "",
             "api_key": "",
             "password": "",
@@ -433,24 +481,41 @@ class JackettShaw(_PluginBase):
         """
         if not isinstance(self._sites, list) or len(self._sites) <= 0:
             return []
-        return [
-            {
-                'component': 'VCard',
+
+        items = []
+        for site in self._sites:
+            items.append({
+                'component': 'tr',
                 'content': [
                     {
-                        'component': 'VCardTitle',
-                        'props': {
-                            'text': '索引列表'
-                        }
+                        'component': 'td',
+                        'text': site.id
                     },
                     {
-                        'component': 'VCardText',
+                        'component': 'td',
+                        'text': site.domain
+                    },
+                    {
+                        'component': 'td',
+                        'text': str(site.public)
+                    }
+                ]
+            })
+
+        return [
+            {
+                'component': 'VRow',
+                'content': [
+                    {
+                        'component': 'VCol',
+                        'props': {
+                            'cols': 12
+                        },
                         'content': [
                             {
                                 'component': 'VTable',
                                 'props': {
-                                    'hover': True,
-                                    'density': 'compact'
+                                    'hover': True
                                 },
                                 'content': [
                                     {
@@ -462,20 +527,23 @@ class JackettShaw(_PluginBase):
                                                     {
                                                         'component': 'th',
                                                         'props': {
-                                                            'text': 'id'
-                                                        }
+                                                            'class': 'text-start ps-4'
+                                                        },
+                                                        'text': 'id'
                                                     },
                                                     {
                                                         'component': 'th',
                                                         'props': {
-                                                            'text': '索引'
-                                                        }
+                                                            'class': 'text-start ps-4'
+                                                        },
+                                                        'text': '索引'
                                                     },
                                                     {
                                                         'component': 'th',
                                                         'props': {
-                                                            'text': '是否公开'
-                                                        }
+                                                            'class': 'text-start ps-4'
+                                                        },
+                                                        'text': '是否公开'
                                                     }
                                                 ]
                                             }
@@ -483,34 +551,7 @@ class JackettShaw(_PluginBase):
                                     },
                                     {
                                         'component': 'tbody',
-                                        'content': [
-                                            {
-                                                'component': 'tr',
-                                                'props': {
-                                                    'id': f'indexer_{site.id}'
-                                                },
-                                                'content': [
-                                                    {
-                                                        'component': 'td',
-                                                        'props': {
-                                                            'text': site.id
-                                                        }
-                                                    },
-                                                    {
-                                                        'component': 'td',
-                                                        'props': {
-                                                            'text': site.domain
-                                                        }
-                                                    },
-                                                    {
-                                                        'component': 'td',
-                                                        'props': {
-                                                            'text': site.public
-                                                        }
-                                                    }
-                                                ]
-                                            } for site in self._sites
-                                        ]
+                                        'content': items
                                     }
                                 ]
                             }
@@ -519,3 +560,4 @@ class JackettShaw(_PluginBase):
                 ]
             }
         ]
+
