@@ -1,0 +1,521 @@
+# _*_ coding: utf-8 _*_
+# author: shaw
+# date: 2025/05/20 15:19:39
+# since: 1.0
+# version: 1.0
+
+"""
+文件说明： 
+"""
+
+from typing import List, Dict, Any, Optional, Tuple
+from datetime import datetime, timedelta
+import xml.dom.minidom
+import requests
+import pytz
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+from app.plugins import _PluginBase
+from app.schemas.types import EventType
+from app.core.event import eventmanager, Event
+from app.utils import RequestUtils, StringUtils, ExceptionUtils, DomUtils
+from app.indexer.indexerConf import IndexerConf
+from app.core.config import settings
+
+class JackettShaw(_PluginBase):
+    # 插件名称
+    plugin_name = "Jackett"
+    # 插件描述
+    plugin_desc = "让内荐索引器支持检索Jackett站点资源"
+    # 插件图标
+    plugin_icon = "Jackett_A.png"
+    # 插件版本
+    plugin_version = "1.0"
+    # 插件作者
+    plugin_author = "shaw"
+    # 作者主页
+    author_url = "https://github.com/jtcymc"
+    # 插件配置项ID前缀
+    plugin_config_prefix = "jackett_shaw_"
+    # 加载顺序
+    plugin_order = 15
+    # 可使用的用户级别
+    auth_level = 1
+
+    # 私有属性
+    _scheduler = None
+    _cron = None
+    _enabled = False
+    _host = ""
+    _api_key = ""
+    _password = ""
+    _onlyonce = False
+    _sites = None
+
+    def init_plugin(self, config: dict = None):
+        """
+        初始化插件
+        """
+        # 读取配置
+        if config:
+            self._host = config.get("host")
+            if self._host:
+                if not self._host.startswith('http'):
+                    self._host = "http://" + self._host
+                if self._host.endswith('/'):
+                    self._host = self._host.rstrip('/')
+            self._api_key = config.get("api_key")
+            self._password = config.get("password")
+            self._enabled = self.get_status()
+            self._onlyonce = config.get("onlyonce")
+            self._cron = config.get("cron")
+            if not StringUtils.is_string_and_not_empty(self._cron):
+                self._cron = "0 0 */24 * *"
+
+        # 停止现有任务
+        self.stop_service()
+
+        # 启动定时任务 & 立即运行一次
+        if self._onlyonce:
+            self._scheduler = BackgroundScheduler(timezone=settings.TZ)
+
+            if self._cron:
+                logger.info(f"【{self.plugin_name}】 索引更新服务启动，周期：{self._cron}")
+                self._scheduler.add_job(self.get_status, CronTrigger.from_crontab(self._cron))
+
+            if self._onlyonce:
+                logger.info(f"【{self.plugin_name}】开始获取索引器状态")
+                self._scheduler.add_job(self.get_status, 'date',
+                                      run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3))
+                # 关闭一次性开关
+                self._onlyonce = False
+                self.__update_config()
+
+            if self._cron or self._onlyonce:
+                # 启动服务
+                self._scheduler.print_jobs()
+                self._scheduler.start()
+
+    def get_status(self):
+        """
+        检查连通性
+        :return: True、False
+        """
+        if not self._api_key or not self._host:
+            return False
+        self._sites = self.get_indexers()
+        return True if isinstance(self._sites, list) and len(self._sites) > 0 else False
+
+    def get_state(self) -> bool:
+        return self._enabled
+
+    def stop_service(self):
+        """
+        退出插件
+        """
+        try:
+            if self._scheduler:
+                self._scheduler.remove_all_jobs()
+                if self._scheduler.running:
+                    self._scheduler.shutdown()
+                self._scheduler = None
+        except Exception as e:
+            logger.error(f"【{self.plugin_name}】停止插件错误: {str(e)}")
+
+    def __update_config(self):
+        """
+        更新插件配置
+        """
+        self.update_config({
+            "onlyonce": False,
+            "cron": self._cron,
+            "host": self._host,
+            "api_key": self._api_key,
+            "password": self._password,
+        })
+
+    def get_indexers(self):
+        """
+        获取配置的jackett indexer
+        :return: indexer 信息 [(indexerId, indexerName, url)]
+        """
+        # 获取Cookie
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "User-Agent": settings.USER_AGENT,
+            "X-Api-Key": self._api_key,
+            "Accept": "application/json, text/javascript, */*; q=0.01"
+        }
+        cookie = None
+        session = requests.session()
+        res = RequestUtils(headers=headers, session=session).post_res(
+            url=f"{self._host}/UI/Dashboard",
+            data={"password": self._password},
+            params={"password": self._password}
+        )
+        if res and session.cookies:
+            cookie = session.cookies.get_dict()
+        indexer_query_url = f"{self._host}/api/v2.0/indexers?configured=true"
+        try:
+            ret = RequestUtils(headers=headers, cookies=cookie).get_res(indexer_query_url)
+            if not ret:
+                return []
+            if not RequestUtils.check_response_is_valid_json(ret):
+                logger.info(f"【{self.plugin_name}】参数设置不正确，请检查所有的参数是否填写正确")
+                return []
+            if not ret.json():
+                return []
+            indexers = [IndexerConf({
+                "id": f'{v["id"]}-{self.plugin_name}',
+                "name": f'【{self.plugin_name}】{v["name"]}',
+                "domain": f'{self._host}/api/v2.0/indexers/{v["id"]}/results/torznab/',
+                "public": True if v['type'] == 'public' else False,
+                "builtin": False,
+                "proxy": True,
+                "parser": self.plugin_name
+            }) for v in ret.json()]
+            return indexers
+        except Exception as e:
+            ExceptionUtils.exception_traceback(e)
+            return []
+
+    def search(self, indexer, keyword, page):
+        """
+        根据关键字多线程检索
+        """
+        if not indexer or not keyword:
+            return None
+        logger.info(f"【{self.plugin_name}】开始检索Indexer：{indexer.name} ...")
+        # 特殊符号处理
+        api_url = f"{indexer.domain}?apikey={self._api_key}&t=search&q={keyword}"
+
+        result_array = self.__parse_torznabxml(api_url)
+
+        if len(result_array) == 0:
+            logger.warn(f"【{self.plugin_name}】{indexer.name} 未检索到数据")
+            return []
+        else:
+            logger.warn(f"【{self.plugin_name}】{indexer.name} 返回数据：{len(result_array)}")
+            return result_array
+
+    @staticmethod
+    def __parse_torznabxml(url):
+        """
+        从torznab xml中解析种子信息
+        :param url: URL地址
+        :return: 解析出来的种子信息列表
+        """
+        if not url:
+            return []
+        try:
+            ret = RequestUtils(timeout=10).get_res(url)
+        except Exception as e:
+            ExceptionUtils.exception_traceback(e)
+            return []
+        if not ret:
+            return []
+        xmls = ret.text
+        if not xmls:
+            return []
+
+        torrents = []
+        try:
+            # 解析XML
+            dom_tree = xml.dom.minidom.parseString(xmls)
+            root_node = dom_tree.documentElement
+            items = root_node.getElementsByTagName("item")
+            for item in items:
+                try:
+                    # indexer id
+                    indexer_id = DomUtils.tag_value(item, "jackettindexer", "id",
+                                                  default=DomUtils.tag_value(item, "jackettindexer", "id", ""))
+                    # indexer
+                    indexer = DomUtils.tag_value(item, "jackettindexer",
+                                               default=DomUtils.tag_value(item, "jackettindexer", default=""))
+
+                    # 标题
+                    title = DomUtils.tag_value(item, "title", default="")
+                    if not title:
+                        continue
+                    # 种子链接
+                    enclosure = DomUtils.tag_value(item, "enclosure", "url", default="")
+                    if not enclosure:
+                        continue
+                    # 描述
+                    description = DomUtils.tag_value(item, "description", default="")
+                    # 种子大小
+                    size = DomUtils.tag_value(item, "size", default=0)
+                    # 种子页面
+                    page_url = DomUtils.tag_value(item, "comments", default="")
+
+                    # 做种数
+                    seeders = 0
+                    # 下载数
+                    peers = 0
+                    # 是否免费
+                    freeleech = False
+                    # 下载因子
+                    downloadvolumefactor = 1.0
+                    # 上传因子
+                    uploadvolumefactor = 1.0
+                    # imdbid
+                    imdbid = ""
+
+                    torznab_attrs = item.getElementsByTagName("torznab:attr")
+                    for torznab_attr in torznab_attrs:
+                        name = torznab_attr.getAttribute('name')
+                        value = torznab_attr.getAttribute('value')
+                        if name == "seeders":
+                            seeders = value
+                        if name == "peers":
+                            peers = value
+                        if name == "downloadvolumefactor":
+                            downloadvolumefactor = value
+                            if float(downloadvolumefactor) == 0:
+                                freeleech = True
+                        if name == "uploadvolumefactor":
+                            uploadvolumefactor = value
+                        if name == "imdbid":
+                            imdbid = value
+
+                    tmp_dict = {
+                        'indexer_id': indexer_id,
+                        'indexer': indexer,
+                        'title': title,
+                        'enclosure': enclosure,
+                        'description': description,
+                        'size': size,
+                        'seeders': seeders,
+                        'peers': peers,
+                        'freeleech': freeleech,
+                        'downloadvolumefactor': downloadvolumefactor,
+                        'uploadvolumefactor': uploadvolumefactor,
+                        'page_url': page_url,
+                        'imdbid': imdbid
+                    }
+                    torrents.append(tmp_dict)
+                except Exception as e:
+                    ExceptionUtils.exception_traceback(e)
+                    continue
+        except Exception as e:
+            ExceptionUtils.exception_traceback(e)
+            pass
+
+        return torrents
+
+    def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+        """
+        拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
+        """
+        return [
+            {
+                'component': 'VForm',
+                'content': [
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'host',
+                                            'label': 'Jackett地址',
+                                            'placeholder': 'http://127.0.0.1:9117',
+                                            'hint': 'Jackett访问地址和端口，如为https需加https://前缀。注意需要先在Jackett中添加indexer，才能正常测试通过和使用'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'api_key',
+                                            'label': 'Api Key',
+                                            'placeholder': '',
+                                            'hint': 'Jackett管理界面右上角复制API Key'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'password',
+                                            'label': '密码',
+                                            'placeholder': '',
+                                            'hint': 'Jackett管理界面中配置的Admin password，如未配置可为空',
+                                            'type': 'password'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'cron',
+                                            'label': '更新周期',
+                                            'placeholder': '0 0 */24 * *',
+                                            'hint': '索引列表更新周期，支持5位cron表达式，默认每24小时运行一次'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'onlyonce',
+                                            'label': '立即运行一次',
+                                            'hint': '打开后立即运行一次获取索引器列表，否则需要等到预先设置的更新周期才会获取'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ], {
+            "host": "",
+            "api_key": "",
+            "password": "",
+            "cron": "0 0 */24 * *",
+            "onlyonce": False
+        }
+
+    def get_page(self) -> List[dict]:
+        """
+        拼装插件详情页面，需要返回页面配置，同时附带数据
+        """
+        if not isinstance(self._sites, list) or len(self._sites) <= 0:
+            return []
+        return [
+            {
+                'component': 'VCard',
+                'content': [
+                    {
+                        'component': 'VCardTitle',
+                        'props': {
+                            'text': '索引列表'
+                        }
+                    },
+                    {
+                        'component': 'VCardText',
+                        'content': [
+                            {
+                                'component': 'VTable',
+                                'props': {
+                                    'hover': True,
+                                    'density': 'compact'
+                                },
+                                'content': [
+                                    {
+                                        'component': 'thead',
+                                        'content': [
+                                            {
+                                                'component': 'tr',
+                                                'content': [
+                                                    {
+                                                        'component': 'th',
+                                                        'props': {
+                                                            'text': 'id'
+                                                        }
+                                                    },
+                                                    {
+                                                        'component': 'th',
+                                                        'props': {
+                                                            'text': '索引'
+                                                        }
+                                                    },
+                                                    {
+                                                        'component': 'th',
+                                                        'props': {
+                                                            'text': '是否公开'
+                                                        }
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        'component': 'tbody',
+                                        'content': [
+                                            {
+                                                'component': 'tr',
+                                                'props': {
+                                                    'id': f'indexer_{site.id}'
+                                                },
+                                                'content': [
+                                                    {
+                                                        'component': 'td',
+                                                        'props': {
+                                                            'text': site.id
+                                                        }
+                                                    },
+                                                    {
+                                                        'component': 'td',
+                                                        'props': {
+                                                            'text': site.domain
+                                                        }
+                                                    },
+                                                    {
+                                                        'component': 'td',
+                                                        'props': {
+                                                            'text': site.public
+                                                        }
+                                                    }
+                                                ]
+                                            } for site in self._sites
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
