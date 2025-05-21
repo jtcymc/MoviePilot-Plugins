@@ -8,7 +8,6 @@ from apscheduler.triggers.cron import CronTrigger
 
 from app.plugins import _PluginBase
 from app.core.config import settings
-from modules.indexer.indexerConf import IndexerConf
 from utils.http import RequestUtils
 from utils.string import StringUtils
 from app.log import logger
@@ -64,7 +63,7 @@ class ProwlarrShaw(_PluginBase):
                 self._cron = "0 0 */24 * *"
 
         # 停止现有任务
-        self.stop_service()
+        # self.stop_service()
 
         # 启动定时任务 & 立即运行一次
         if self._onlyonce:
@@ -149,15 +148,16 @@ class ProwlarrShaw(_PluginBase):
             if not ret or ret_indexers == [] or ret is None:
                 return []
 
-            indexers = [IndexerConf({
+            indexers = [{
                 "id": f'{v["indexerName"]}-{self.plugin_name}',
                 "name": f'【{self.plugin_name}】{v["indexerName"]}',
-                "domain": f'{self._host}/api/v1/indexer/{v["indexerId"]}',
+                "url": f'{self._host}/api/v1/indexer/{v["indexerId"]}',
+                "domain": StringUtils.get_url_domain(self._host),
                 "public": True,
-                "builtin": False,
+                # "builtin": False,
                 "proxy": True,
-                "parser": self.plugin_name
-            }) for v in ret_indexers]
+                "parser": "Plugin"
+            } for v in ret_indexers]
             return indexers
         except Exception as e:
             logger.error(str(e))
@@ -169,17 +169,17 @@ class ProwlarrShaw(_PluginBase):
         """
         if not indexer or not keyword:
             return None
-        logger.info(f"【{self.plugin_name}】开始检索Indexer：{indexer.name} ...")
+        logger.info(f"【{self.plugin_name}】开始检索Indexer：{indexer.get("name")} ...")
 
         # 获取indexerId
         indexerId_pattern = r"/indexer/([^/]+)"
-        indexerId_match = re.search(indexerId_pattern, indexer.domain)
+        indexerId_match = re.search(indexerId_pattern, indexer.get("url"))
         indexerId = ""
         if indexerId_match:
             indexerId = indexerId_match.group(1)
 
         if not StringUtils.is_string_and_not_empty(indexerId):
-            logger.info(f"【{self.plugin_name}】{indexer.name} 索引id为空")
+            logger.info(f"【{self.plugin_name}】{indexer.get("name")} 索引id为空")
             return []
 
         try:
@@ -206,15 +206,15 @@ class ProwlarrShaw(_PluginBase):
             torrents = []
             for entry in ret_indexers:
                 tmp_dict = {
-                    'indexer_id': entry["indexerId"],
-                    'indexer': entry["indexer"],
+                    # 'id': entry["indexerId"],
+                    # 'indexer': entry["indexer"],
                     'title': entry["title"],
                     'enclosure': entry["downloadUrl"],
                     'description': entry["sortTitle"],
                     'size': entry["size"],
                     'seeders': entry["seeders"],
                     'peers': None,
-                    'freeleech': None,
+                    # 'freeleech': None,
                     'downloadvolumefactor': None,
                     'uploadvolumefactor': None,
                     'page_url': entry["guid"],
@@ -360,12 +360,23 @@ class ProwlarrShaw(_PluginBase):
             "cron": "0 0 */24 * *",
             "onlyonce": False
         }
+    def _ensure_sites_loaded(self) -> bool:
+        """
+        确保 self._sites 已加载数据，若为空则尝试重新加载。
+        :return: 成功加载返回 True，否则 False
+        """
+        if isinstance(self._sites, list) and len(self._sites) > 0:
+            return True
 
+        # 尝试重新加载站点数据
+        self.get_status()
+
+        return isinstance(self._sites, list) and len(self._sites) > 0
     def get_page(self) -> List[dict]:
         """
         拼装插件详情页面，需要返回页面配置，同时附带数据
         """
-        if not isinstance(self._sites, list) or len(self._sites) <= 0:
+        if not self._ensure_sites_loaded():
             return []
 
         items = []
@@ -375,15 +386,15 @@ class ProwlarrShaw(_PluginBase):
                 'content': [
                     {
                         'component': 'td',
-                        'text': site.id
+                        'text': site.get("id")
                     },
                     {
                         'component': 'td',
-                        'text': site.domain
+                        'text': site.get("domain")
                     },
                     {
                         'component': 'td',
-                        'text': str(site.public)
+                        'text': site.get("public")
                     }
                 ]
             })

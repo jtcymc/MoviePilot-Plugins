@@ -1,5 +1,5 @@
 # _*_ coding: utf-8 _*_
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Tuple
 from datetime import datetime, timedelta
 import xml.dom.minidom
 import requests
@@ -9,7 +9,6 @@ from apscheduler.triggers.cron import CronTrigger
 from app.log import logger
 from app.plugins import _PluginBase
 from app.core.config import settings
-from modules.indexer.indexerConf import IndexerConf
 from utils.dom import DomUtils
 from utils.http import RequestUtils
 from utils.string import StringUtils
@@ -67,9 +66,8 @@ class JackettShaw(_PluginBase):
             if not StringUtils.is_string_and_not_empty(self._cron):
                 self._cron = "0 0 */24 * *"
 
-        # 停止现有任务
-        self.stop_service()
-
+        # # 停止现有任务
+        # self.stop_service()
         # 启动定时任务 & 立即运行一次
         if self._onlyonce:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
@@ -90,6 +88,11 @@ class JackettShaw(_PluginBase):
                 # 启动服务
                 self._scheduler.print_jobs()
                 self._scheduler.start()
+
+    def register_to_site(self):
+        """
+        注册到site
+        """
 
     def get_status(self):
         """
@@ -162,15 +165,17 @@ class JackettShaw(_PluginBase):
                 return []
             if not ret.json():
                 return []
-            indexers = [IndexerConf({
+            indexers = [{
                 "id": f'{v["id"]}-{self.plugin_name}',
                 "name": f'【{self.plugin_name}】{v["name"]}',
-                "domain": f'{self._host}/api/v2.0/indexers/{v["id"]}/results/torznab/',
-                "public": True if v['type'] == 'public' else False,
-                "builtin": False,
+                "url": f'{self._host}/api/v2.0/indexers/{v["id"]}/results/torznab/',
+                "domain": StringUtils.get_url_domain(self._host),
+                # "public": True if v['type'] == 'public' else False,
+                "public": True,
+                # "builtin": False,
                 "proxy": True,
-                "parser": self.plugin_name
-            }) for v in ret.json()]
+                "parser": "Plugin"
+            } for v in ret.json()]
             return indexers
         except Exception as e:
             logger.error(str(e))
@@ -182,17 +187,17 @@ class JackettShaw(_PluginBase):
         """
         if not indexer or not keyword:
             return None
-        logger.info(f"【{self.plugin_name}】开始检索Indexer：{indexer.name} ...")
+        logger.info(f"【{self.plugin_name}】开始检索Indexer：{indexer.get("name")} ...")
         # 特殊符号处理
-        api_url = f"{indexer.domain}?apikey={self._api_key}&t=search&q={keyword}"
+        api_url = f"{indexer.get("url")}?apikey={self._api_key}&t=search&q={keyword}"
 
-        result_array = self.__parse_torznabxml(api_url)
+        result_array = self.__parse_torznab_xml(api_url)
 
         if len(result_array) == 0:
-            logger.warn(f"【{self.plugin_name}】{indexer.name} 未检索到数据")
+            logger.warn(f"【{self.plugin_name}】{indexer.get("name")} 未检索到数据")
             return []
         else:
-            logger.warn(f"【{self.plugin_name}】{indexer.name} 返回数据：{len(result_array)}")
+            logger.info(f"【{self.plugin_name}】{indexer.get("name")} 返回数据：{len(result_array)}")
             return result_array
 
     def get_api(self) -> List[Dict[str, Any]]:
@@ -208,7 +213,7 @@ class JackettShaw(_PluginBase):
 
     pass
 
-    def __parse_torznabxml(self, url):
+    def __parse_torznab_xml(self, url):
         """
         从torznab xml中解析种子信息
         :param url: URL地址
@@ -217,7 +222,7 @@ class JackettShaw(_PluginBase):
         if not url:
             return []
         try:
-            ret = RequestUtils(timeout=10).get_res(url,
+            ret = RequestUtils(timeout=60).get_res(url,
                                                    proxies=settings.PROXY if self._proxy else None)
         except Exception as e:
             logger.error(str(e))
@@ -257,7 +262,10 @@ class JackettShaw(_PluginBase):
                     size = DomUtils.tag_value(item, "size", default=0)
                     # 种子页面
                     page_url = DomUtils.tag_value(item, "comments", default="")
-
+                    # 发布时间
+                    pubdate = DomUtils.tag_value(item, "pubDate", default="")
+                    if pubdate:
+                        pubdate = StringUtils.unify_datetime_str(pubdate)
                     # 做种数
                     seeders = 0
                     # 下载数
@@ -289,15 +297,15 @@ class JackettShaw(_PluginBase):
                             imdbid = value
 
                     tmp_dict = {
-                        'indexer_id': indexer_id,
-                        'indexer': indexer,
+                        # 'id': indexer_id,
+                        # 'indexer': indexer,
                         'title': title,
                         'enclosure': enclosure,
                         'description': description,
                         'size': size,
                         'seeders': seeders,
                         'peers': peers,
-                        'freeleech': freeleech,
+                        # 'freeleech': freeleech,
                         'downloadvolumefactor': downloadvolumefactor,
                         'uploadvolumefactor': uploadvolumefactor,
                         'page_url': page_url,
@@ -475,11 +483,24 @@ class JackettShaw(_PluginBase):
             "onlyonce": False
         }
 
+    def _ensure_sites_loaded(self) -> bool:
+        """
+        确保 self._sites 已加载数据，若为空则尝试重新加载。
+        :return: 成功加载返回 True，否则 False
+        """
+        if isinstance(self._sites, list) and len(self._sites) > 0:
+            return True
+
+        # 尝试重新加载站点数据
+        self.get_status()
+
+        return isinstance(self._sites, list) and len(self._sites) > 0
+
     def get_page(self) -> List[dict]:
         """
         拼装插件详情页面，需要返回页面配置，同时附带数据
         """
-        if not isinstance(self._sites, list) or len(self._sites) <= 0:
+        if not self._ensure_sites_loaded():
             return []
 
         items = []
@@ -489,15 +510,15 @@ class JackettShaw(_PluginBase):
                 'content': [
                     {
                         'component': 'td',
-                        'text': site.id
+                        'text': site.get("id")
                     },
                     {
                         'component': 'td',
-                        'text': site.domain
+                        'text': site.get("domain")
                     },
                     {
                         'component': 'td',
-                        'text': str(site.public)
+                        'text': site.get("public")
                     }
                 ]
             })
@@ -560,4 +581,3 @@ class JackettShaw(_PluginBase):
                 ]
             }
         ]
-
