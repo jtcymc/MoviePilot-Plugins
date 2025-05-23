@@ -14,7 +14,7 @@ from app.log import logger
 
 class ProwlarrShaw(_PluginBase):
     # 插件名称
-    plugin_name = "Prowlarr"
+    plugin_name = "ProwlarrShaw"
     # 插件描述
     plugin_desc = "让内荐索引器支持检索Prowlarr站点资源"
     # 插件图标
@@ -31,7 +31,8 @@ class ProwlarrShaw(_PluginBase):
     plugin_order = 16
     # 可使用的用户级别
     auth_level = 1
-
+    # TODO 爬虫必须要！！！！！！！！！ app/modules/indexer/spider/plugins.py:31
+    is_spider = True
     # 私有属性
     _scheduler = None
     _cron = None

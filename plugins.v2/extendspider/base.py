@@ -1,6 +1,8 @@
 from abc import ABCMeta, abstractmethod
 from typing import Optional, Tuple
 
+from cachetools import TTLCache, cached
+
 from log import logger
 from sites import SiteRateLimiter
 from utils.string import StringUtils
@@ -38,7 +40,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     # 代理实例
     spider_proxy_client = None  # 请求间隔时间范围（秒）
     #  请求间隔时间
-    spider_request_interval = (2, 5)  # 最小2秒，最大5秒
+    spider_request_interval = (1, 3)  # 最小2秒，最大5秒
     # 爬虫网站连通
     spider_web_status = True
 
@@ -50,6 +52,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         self.spider_name = config.get("spider_name")
         self.spider_desc = config.get("spider_desc")
         self.spider_enable = config.get("spider_enable")
+        self.spider_proxy = config.get("spider_proxy")
         self.init_spider(config)
         # 初始化限速器
         self._limiters[self.spider_name] = SiteRateLimiter(
@@ -133,6 +136,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         except Exception as e:
             return False, f"测试过程发生异常: {str(e)}"
 
+    @cached(cache=TTLCache(maxsize=1, ttl= 8 * 3600))
     def search(self, keyword: str, page: int):
         """
         搜索资源，支持限速控制。

@@ -16,7 +16,7 @@ from utils.string import StringUtils
 
 class JackettShaw(_PluginBase):
     # 插件名称
-    plugin_name = "Jackett"
+    plugin_name = "JackettShaw"
     # 插件描述
     plugin_desc = "让内荐索引器支持检索Jackett站点资源"
     # 插件图标
@@ -33,7 +33,7 @@ class JackettShaw(_PluginBase):
     plugin_order = 15
     # 可使用的用户级别
     auth_level = 1
-    # 爬虫
+    # TODO 爬虫必须要！！！！！！！！！ app/modules/indexer/spider/plugins.py:31
     is_spider = True
 
     # 私有属性
