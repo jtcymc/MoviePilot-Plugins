@@ -1,11 +1,13 @@
 from typing import Tuple
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from app.log import logger
+from core.config import settings
 from plugins.extendspider.base import _ExtendSpiderBase
-from plugins.extendspider.utils.proxy import ProxyFactory
+from modules.indexer.utils.proxy import ProxyFactory
 from plugins.extendspider.utils.url import xn_url_encode
 import requests
+import threading
 
 
 class Bt1louSpider(_ExtendSpiderBase):
@@ -19,6 +21,10 @@ class Bt1louSpider(_ExtendSpiderBase):
     def __init__(self, config: dict = None):
         super(Bt1louSpider, self).__init__(config)
         logger.info(f"初始化 {self.spider_name} 爬虫")
+        # 初始化线程锁
+        self._torrent_lock = threading.Lock()
+        self._result_lock = threading.Lock()
+        self.spider_max_load_page = 4
 
     def init_spider(self, config: dict = None):
         self.spider_url = "https://www.1lou.me"
@@ -34,18 +40,21 @@ class Bt1louSpider(_ExtendSpiderBase):
         self.spider_search_url = f"{self.spider_url}/search-$key$-$page$.htm"
         self.spider_cookie = ""
         if self.spider_proxy:
-            proxy_type = 'flaresolverr'
+            # 初始化代理
+            proxy_config = {
+                'proxy_type': 'flaresolverr',
+                'flaresolverr_url': settings.FLARESOLVERR_URL,
+                'request_interval': self.spider_request_interval
+            }
         else:
-            proxy_type = 'direct'
-        # 初始化代理
-        proxy_config = {
-            'flaresolverr_url': 'http://192.168.68.116:8191',
-            'request_interval': self.spider_request_interval
-        }
+            proxy_config = {
+                'proxy_type': 'direct',
+                'request_interval': self.spider_request_interval
+            }
 
-        self.spider_proxy_client = ProxyFactory.create_proxy(proxy_type, headers=self.spider_request_interval,
+        self.spider_proxy_client = ProxyFactory.create_proxy(headers=self.spider_headers,
                                                              **proxy_config)
-        logger.info(f"初始化代理类型: {proxy_type}, 配置: {proxy_config}")
+        logger.info(f"初始化代理类型: {proxy_config.get("proxy_type")}, 配置: {proxy_config}")
 
     def _get_cookie(self):
         # 访问主页获取 cookie
@@ -60,6 +69,17 @@ class Bt1louSpider(_ExtendSpiderBase):
                 logger.warning("未获取到 Cookie")
         except Exception as e:
             logger.error(f"获取 Cookie 失败: {str(e)}")
+
+    def _get_page(self, page: int) -> str:
+        if page <= self.spider_page_start:
+            page = self.spider_page_start
+        return f"1-{page}"
+
+    def get_search_url(self, keyword: str, page: int) -> str:
+        if not keyword:
+            return ""
+        return self.spider_search_url.replace("$key$", xn_url_encode(keyword)).replace("$page$",
+                                                                                       self._get_page(page))
 
     def _do_search(self, keyword: str, page: int):
         if not keyword:
@@ -80,7 +100,8 @@ class Bt1louSpider(_ExtendSpiderBase):
             if not search_url:
                 logger.error("生成搜索URL失败")
                 return []
-
+            # 间隔
+            self.spider_proxy_client.wait_for_interval()
             logger.info(f"开始搜索: {keyword}, 页码: 1, URL: {search_url}")
             response = self.spider_proxy_client.request('GET', search_url)
             if response.status_code != 200:
@@ -89,21 +110,37 @@ class Bt1louSpider(_ExtendSpiderBase):
 
             # 解析总页数
             total_pages = self._parse_total_pages(response)
-            if not total_pages:
-                logger.warning("未找到分页信息，只抓取第一页")
-                return self._parse_search_result(response)
+            # if not total_pages:
+            #     logger.warning("未找到分页信息，只抓取第一页")
+            #     return self._parse_search_result(response)
 
             # 计算需要抓取的页数
-            pages_to_fetch = min(total_pages, self.spider_max_load_page)
-            logger.info(f"总页数: {total_pages}, 将抓取前 {pages_to_fetch} 页")
-
+            pages_to_fetch = min(total_pages or 1, self.spider_max_load_page)
+            logger.info(f"总页数: {total_pages or 1}, 将抓取前 {pages_to_fetch} 页")
             # 抓取第一页
             results.extend(self._parse_search_result(response))
 
-            # 抓取后续页面
-            for current_page in range(2, pages_to_fetch + 1):
-                page_results = self._search_page(keyword, current_page)
-                results.extend(page_results)
+            if pages_to_fetch < 2:
+                return results
+
+            # 使用线程池并发抓取后续页面
+            with ThreadPoolExecutor(max_workers=min(5, pages_to_fetch)) as executor:
+                # 创建任务
+                future_to_page = {
+                    executor.submit(self._search_page, keyword, current_page): current_page
+                    for current_page in range(2, pages_to_fetch + 1)
+                }
+
+                # 获取结果
+                for future in as_completed(future_to_page):
+                    current_page = future_to_page[future]
+                    try:
+                        page_results = future.result()
+                        with self._result_lock:
+                            results.extend(page_results)
+                            logger.info(f"第 {current_page} 页抓取完成，找到 {len(page_results)} 个结果")
+                    except Exception as e:
+                        logger.error(f"抓取第 {current_page} 页时发生错误: {str(e)}")
 
             logger.info(f"搜索完成，共找到 {len(results)} 个结果")
             return results
@@ -115,9 +152,6 @@ class Bt1louSpider(_ExtendSpiderBase):
         """抓取指定页的数据"""
         try:
             search_url = self.get_search_url(keyword, page)
-            if not search_url:
-                logger.error(f"生成第 {page} 页搜索URL失败")
-                return []
 
             logger.info(f"正在抓取第 {page} 页: {search_url}")
             response = self.spider_proxy_client.request('GET', search_url)
@@ -139,12 +173,12 @@ class Bt1louSpider(_ExtendSpiderBase):
             soup = BeautifulSoup(response.text, "html.parser")
             pagination = soup.find("ul", class_="pagination")
             if not pagination:
-                return 0
+                return 1
 
             # 获取所有页码链接
             page_items = pagination.find_all("li", class_="page-item")
-            if not page_items:
-                return 0
+            if not page_items or len(page_items) < 2:
+                return 1
 
             # 获取最后一个li的文本（排除▶按钮）
             last_item = page_items[-1]
@@ -175,19 +209,20 @@ class Bt1louSpider(_ExtendSpiderBase):
                 return max_page
             except (ValueError, TypeError):
                 logger.error("无法解析页码")
-                return 0
+                return 1
 
         except Exception as e:
             logger.error(f"解析总页数失败: {str(e)}")
-            return 0
+            return 1
 
     def _parse_search_result(self, response: requests.Response):
         results = []
         # 初始化已处理标题集合
         _processed_titles = set()
         _processed_torrent_titles = set()
-
         _processed_urls = set()
+        detail_urls = []
+
         try:
             soup = BeautifulSoup(response.text, "html.parser")
             for result in soup.find_all("li", class_="media thread tap"):
@@ -195,98 +230,109 @@ class Bt1louSpider(_ExtendSpiderBase):
                 if not result.find("div", class_="subject break-all").find("i", class_="icon small filetype other"):
                     continue
                 title_link = result.find("div", class_="subject break-all").find("a")
-                if title_link and title_link['href']:
-                    # 处理标题中的 text-danger 标签
-                    title = ""
-                    for content in title_link.contents:
-                        if content.name == "span" and "text-danger" in content.get("class", []):
-                            title += content.text
-                        elif isinstance(content, str):
-                            title += content
-                    title = title.strip()
+                if not title_link or not title_link.get('href'):
+                    continue
 
-                    # 检查标题是否已处理过
-                    if title in _processed_titles:
-                        logger.info(f"跳过重复标题: {title}")
-                        continue
+                # 处理标题中的 text-danger 标签
+                title = ''.join(
+                    c.text if getattr(c, 'name', None) == "span" and "text-danger" in c.get("class", []) else str(c)
+                    for c in title_link.contents
+                ).strip()
+                # 检查标题是否已处理过
+                if title in _processed_titles:
+                    logger.info(f"跳过重复标题: {title}")
+                    continue
+                detail_url = title_link['href']
+                if not detail_url.startswith("http"):
+                    detail_url = f"{self.spider_url}/{detail_url}"
 
-                    if title_link['href'].startswith("http"):
-                        detail_url = title_link['href']
-                    else:
-                        detail_url = f"{self.spider_url}/{title_link['href']}"
-                        logger.info(f"正在获取详情页: {detail_url}")
-                    if detail_url in _processed_urls:
-                        logger.info(f"跳过已处理详情页: {detail_url}")
-                    state, res = self._get_torrent(_processed_torrent_titles, detail_url)
+                # 检查URL是否已处理过
+                if detail_url in _processed_urls:
+                    logger.info(f"跳过已处理详情页: {detail_url}")
+                    continue
+
+                # 添加到待处理列表
+                detail_urls.append((title, detail_url))
+                _processed_titles.add(title)
+                _processed_urls.add(detail_url)
+            if not detail_urls:
+                return results
+            # 使用线程池并发获取种子信息
+            logger.info(f"开始并发获取 {len(detail_urls)} 个详情页的种子信息")
+
+            def fetch_detail(detail_url_str):
+                try:
+                    state, torrents = self._get_torrent_thread_safe(_processed_torrent_titles, detail_url_str)
                     if state:
-                        # 添加到已处理集合
-                        _processed_titles.add(title)
-                        _processed_urls.add(detail_url)
-                        results.extend(res)
-                        logger.info(f"成功获取种子信息: {len(res)} 个")
-                    else:
-                        logger.error(f"获取种子失败：{res}")
-                        return results
+                        logger.info(f"成功获取详情页 {detail_url_str} 的种子信息: {len(torrents)} 个")
+                    return torrents if state else []
+                except Exception as ex:
+                    logger.error(f"详情抓取失败: {detail_url_str}: {str(ex)}")
+                    return []
+
+            with ThreadPoolExecutor(max_workers=min(4, len(detail_urls))) as executor:
+                futures = {
+                    executor.submit(fetch_detail, detail_url_s): detail_url_s
+                    for _, detail_url_s in detail_urls
+                }
+                for future in as_completed(futures):
+                    page_results = future.result()
+                    with self._result_lock:
+                        results.extend(page_results)
+
+            logger.info(f"本页共处理 {len(detail_urls)} 个详情页，获取到 {len(results)} 个种子")
+            return results
         except Exception as e:
             logger.error(f"解析搜索结果失败: {str(e)}")
-        return results
+            return results
 
-    def _get_torrent(self, _processed_torrent_titles: set, detail_url: str) -> Tuple[bool, list]:
+    def _get_torrent_thread_safe(self, _processed_torrent_titles: set, detail_url: str) -> Tuple[bool, list]:
+        """线程安全的获取种子信息"""
         results = []
         try:
             logger.debug(f"正在请求详情页: {detail_url}")
             response = self.spider_proxy_client.request('GET', detail_url)
+            if response.status_code != 200:
+                return False, []
+            soup = BeautifulSoup(response.text, "html.parser")
+            fieldset = soup.find("fieldset", class_="fieldset")
+            if not fieldset:
+                return True, []
+            for li in fieldset.find_all("li"):
+                if not li.find("i", class_="icon filetype torrent"):
+                    continue
+                title = li.find("a").text.strip()
+                # 使用线程锁保护共享资源的访问
+                with self._torrent_lock:
+                    if title in _processed_torrent_titles:
+                        logger.info(f"跳过已处理种子：{title}")
+                        continue
+                    _processed_torrent_titles.add(title)
 
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, "html.parser")
-                fieldset = soup.find("fieldset", class_="fieldset")
-                if fieldset:
-                    for li in fieldset.find_all("li"):
-                        if li.find("i", class_="icon filetype torrent"):
-                            title = li.find("a").text.strip()
-                            if title in _processed_torrent_titles:
-                                logger.info(f"跳过已处理种子：{title}")
-                                continue
-                            href = li.find("a")['href']
-                            # 判断是否是磁力链接
-                            if href.startswith('magnet:?'):
-                                enclosure = href
-                                logger.debug(f"找到磁力链接: {enclosure}")
-                            else:
-                                # 处理普通下载链接
-                                if href.startswith('http'):
-                                    enclosure = href
-                                else:
-                                    enclosure = f"{self.spider_url}/{href}"
-                                logger.debug(f"找到下载链接: {enclosure}")
-
-                            torrent_info = {
-                                "title": title,
-                                "enclosure": enclosure,
-                                'description': title,
-                                'page_url': detail_url,
-                            }
-                            results.append(torrent_info)
-                            _processed_torrent_titles.add(title)
-                            logger.info(f"找到种子: {title}")
+                href = li.find("a")['href']
+                # 判断是否是磁力链接
+                if href.startswith('magnet:?'):
+                    enclosure = href
+                    logger.debug(f"找到磁力链接: {enclosure}")
                 else:
-                    logger.warning(f"未找到种子信息: {detail_url}")
-            else:
-                logger.error(f"请求详情页失败: HTTP {response.status_code}")
+                    # 处理普通下载链接
+                    if href.startswith('http'):
+                        enclosure = href
+                    else:
+                        enclosure = f"{self.spider_url}/{href}"
+                    logger.debug(f"找到下载链接: {enclosure}")
+
+                results.append({
+                    "title": title,
+                    "enclosure": enclosure,
+                    "description": title,
+                    "page_url": detail_url,
+                })
+                logger.info(f"找到种子: {title}")
             return True, results
         except Exception as e:
             logger.error(f"获取种子链接失败: {str(e)}")
             return False, results
-
-    def _get_page(self, page: int) -> str:
-        if page <= self.spider_page_start:
-            page = self.spider_page_start
-        return f"1-{page}"
-
-    def get_search_url(self, keyword: str, page: int) -> str:
-        if not keyword:
-            return ""
-        return self.spider_search_url.replace("$key$", xn_url_encode(keyword)).replace("$page$", self._get_page(page))
 
     def search(self, keyword: str, page: int):
         """
@@ -296,10 +342,8 @@ class Bt1louSpider(_ExtendSpiderBase):
         :return: 匹配的种子资源列表
         """
         # 检查是否触发限速
-        state, msg = self.check_ratelimit()
-        if state:
-            return []
-        return self._do_search(keyword, page)
+        state, _ = self.check_ratelimit()
+        return [] if state else self._do_search(keyword, page)
 
 
 if __name__ == "__main__":

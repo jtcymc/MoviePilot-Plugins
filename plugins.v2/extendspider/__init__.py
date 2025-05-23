@@ -1,20 +1,19 @@
 # _*_ coding: utf-8 _*_
+from copy import copy
 from typing import List, Dict, Any, Tuple
 
-from app.core.config import settings
 from app.plugins import _PluginBase
-from app.utils.string import StringUtils
 from app.log import logger
 from plugins.extendspider.base import _ExtendSpiderBase
 from plugins.extendspider.utils.spinder_helper import SpiderHelper
 
 spider_configs = \
     {
-        "1lou": {'spider_name': '1lou',
-                 'spider_enable': True,
-                 'spider_desc': 'BT之家1LOU站-回归初心，追求极简',
-                 'plugin_name': 'ExtendSpider'  # 必须和插件名一致
-                 }
+        "Bt1louSpider": {'spider_name': 'Bt1louSpider',
+                         'spider_enable': True,
+                         'spider_desc': 'BT之家1LOU站-回归初心，追求极简',
+                         'plugin_name': 'ExtendSpider'  # 必须和插件名一致
+                         }
     }
 
 
@@ -37,7 +36,8 @@ class ExtendSpider(_PluginBase):
     plugin_order = 15
     # 可使用的用户级别
     auth_level = 1
-
+    # TODO 爬虫必须要！！！！！！！！！ app/modules/indexer/spider/plugins.py:31
+    is_spider = True
     # 私有属性
     _scheduler = None
     _cron = None
@@ -57,26 +57,26 @@ class ExtendSpider(_PluginBase):
             self._onlyonce = config.get("onlyonce")
             self._cron = config.get("cron")
             self._spider_config = config.get("spider_config") if config.get("spider_config") else spider_configs
-
+        else:
+            self._spider_config = copy(spider_configs)
+        # 停止现有任务
+        self.stop_service()
         self._spider_helper = SpiderHelper(self._spider_config)
-        
+        # 启动定时任务 & 立即运行一次
+        # self._scheduler = BackgroundScheduler(timezone=settings.TZ)
         # 初始化定时任务
-        if self._enabled:
-            if self._scheduler:
-                self._scheduler.remove_all_jobs()
-            if self._cron:
-                self._scheduler.add_job(self.__update_spider_status, 'cron', 
-                                     id='update_spider_status',
-                                     name='更新爬虫状态',
-                                     args=(),
-                                     cron=self._cron)
-                logger.info(f"爬虫状态更新任务已启动，执行周期：{self._cron}")
-            
-            # 立即执行一次
-            if self._onlyonce:
-                self.__update_spider_status()
-                self._onlyonce = False
-                self.__update_config()
+        # if self._enabled:
+            # if self._scheduler:
+            #     self._scheduler.remove_all_jobs()
+            # if self._cron:
+            #     self._scheduler.add_job(self.__update_spider_status, CronTrigger.from_crontab(self._cron))
+            #     logger.info(f"爬虫状态更新任务已启动，执行周期：{self._cron}")
+
+            # # 立即执行一次
+            # if self._onlyonce:
+            #     self.__update_spider_status()
+            #     self._onlyonce = False
+            #     self.__update_config()
 
     def __update_spider_status(self):
         """
@@ -147,7 +147,7 @@ class ExtendSpider(_PluginBase):
         """
         if not indexer or not keyword:
             return None
-        s_name = indexer.get("id", "").split('-')[0]
+        s_name = indexer.get("id", "").split('-')[1]
         logger.info(f"【{self.plugin_name}】开始检索Indexer：{s_name} ...")
         ret = self._spider_helper.search(s_name, keyword, page)
         logger.info(f"【{self.plugin_name}】检索Indexer：返回资源数：{len(ret)}")
@@ -165,12 +165,6 @@ class ExtendSpider(_PluginBase):
         """
         return [
             {
-                "path": "/update_spider_status",
-                "endpoint": self.__update_spider_status,
-                "methods": ["POST"],
-                "summary": "更新爬虫状态"
-            },
-            {
                 "path": "/toggle_spider",
                 "endpoint": self.__toggle_spider,
                 "methods": ["POST"],
@@ -178,27 +172,26 @@ class ExtendSpider(_PluginBase):
             }
         ]
 
-    def __toggle_spider(self, spider_name: str, enable: bool) -> Dict[str, Any]:
+    def __toggle_spider(self, spider_name: str) -> Dict[str, Any]:
         """
         启用/停止爬虫
         :param spider_name: 爬虫名称
-        :param enable: 是否启用
         :return: 操作结果
         """
         try:
             if not self._spider_helper:
                 return {"success": False, "message": "爬虫助手未初始化"}
-            
+            enable = self._spider_helper.spider_config[spider_name]['spider_enable']
             # 更新配置
             if spider_name in self._spider_helper.spider_config:
-                self._spider_helper.spider_config[spider_name]['spider_enable'] = enable
-                
+                self._spider_helper.spider_config[spider_name]['spider_enable'] = not enable
+
                 # 重启爬虫
                 if enable:
                     self._spider_helper.load_spiders(spider_name)
                 else:
                     self._spider_helper.remove_plugin(spider_name)
-                
+
                 return {"success": True, "message": f"爬虫 {spider_name} {'启用' if enable else '停止'}成功"}
             else:
                 return {"success": False, "message": f"爬虫 {spider_name} 不存在"}
@@ -212,10 +205,11 @@ class ExtendSpider(_PluginBase):
         """
         # 获取爬虫状态
         spider_status = self._spider_helper.get_spider_status() if self._spider_helper else []
-        
+
         # 构建爬虫状态表格
         spider_items = []
         for spider in spider_status:
+            spider_name = spider.get('name')
             spider_items.append({
                 'component': 'tr',
                 'content': [
@@ -236,7 +230,17 @@ class ExtendSpider(_PluginBase):
                                     'model': f'spider_enable_{spider.get("name")}',
                                     'label': '启用',
                                     'color': 'success' if spider.get("enable") else 'error'
+                                },
+                                "events": {
+                                    "click": {
+                                        "api": "plugin/ExtendSpider/toggle_spider",
+                                        "method": "post",
+                                        "params": {
+                                            "spider_name": spider_name
+                                        }
+                                    }
                                 }
+
                             }
                         ]
                     },

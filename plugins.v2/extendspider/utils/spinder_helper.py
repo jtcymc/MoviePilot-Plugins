@@ -4,8 +4,6 @@ from typing import List, Any, Optional, Dict, Tuple
 from app.helper.module import ModuleHelper
 from plugins.extendspider import _ExtendSpiderBase
 from app.log import logger
-from utils.singleton import Singleton
-
 
 # cc = {
 #     'spider_name': '',
@@ -14,7 +12,7 @@ from utils.singleton import Singleton
 # }
 
 
-class SpiderHelper(metaclass=Singleton):
+class SpiderHelper:
     # 所有插件列表
     _extend_plugins: Dict[str, Any] = {}
 
@@ -26,7 +24,7 @@ class SpiderHelper(metaclass=Singleton):
 
     def __init__(self, presets_spider_config: Dict = None):
         self._presets_spider_config = presets_spider_config
-        pass
+        self.init_config()
 
     def init_config(self):
         self.remove_plugin()
@@ -116,7 +114,6 @@ class SpiderHelper(metaclass=Singleton):
         logger.info("插件停止完成")
 
     def search(self, s_name, keyword, page):
-        s_name = s_name.lower()
         spider = self._extend_running_plugins.get(s_name)
         if spider:
             return spider.search(keyword, page)
@@ -145,10 +142,10 @@ class SpiderHelper(metaclass=Singleton):
         if spider_name not in self._presets_spider_config:
             logger.error(f"爬虫 {spider_name} 配置不存在")
             return False
-        
+
         # 更新配置
         self._presets_spider_config[spider_name].update(config)
-        
+
         # 重启爬虫
         self.remove_plugin(spider_name)
         self.load_spiders(spider_name)
