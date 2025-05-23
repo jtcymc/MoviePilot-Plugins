@@ -40,7 +40,7 @@ class ProwlarrShaw(_PluginBase):
     _host = ""
     _api_key = ""
     _onlyonce = False
-    _sites = None
+    _indexers = None
 
     def init_plugin(self, config: dict = None):
         """
@@ -63,28 +63,27 @@ class ProwlarrShaw(_PluginBase):
                 self._cron = "0 0 */24 * *"
 
         # 停止现有任务
-        # self.stop_service()
-
+        self.stop_service()
         # 启动定时任务 & 立即运行一次
+        self._scheduler = BackgroundScheduler(timezone=settings.TZ)
+        if self._cron:
+            logger.info(f"【{self.plugin_name}】 索引更新服务启动，周期：{self._cron}")
+            self._scheduler.add_job(self.get_status, CronTrigger.from_crontab(self._cron))
+
         if self._onlyonce:
-            self._scheduler = BackgroundScheduler(timezone=settings.TZ)
+            logger.info(f"【{self.plugin_name}】开始获取索引器状态")
+            self._scheduler.add_job(self.get_status, 'date',
+                                    run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3))
+            # 关闭一次性开关
+            self._onlyonce = False
+            self.__update_config()
 
-            if self._cron:
-                logger.info(f"【{self.plugin_name}】 索引更新服务启动，周期：{self._cron}")
-                self._scheduler.add_job(self.get_status, CronTrigger.from_crontab(self._cron))
-
-            if self._onlyonce:
-                logger.info(f"【{self.plugin_name}】开始获取索引器状态")
-                self._scheduler.add_job(self.get_status, 'date',
-                                      run_date=datetime.now(tz=pytz.timezone(settings.TZ)) + timedelta(seconds=3))
-                # 关闭一次性开关
-                self._onlyonce = False
-                self.__update_config()
-
-            if self._cron or self._onlyonce:
-                # 启动服务
-                self._scheduler.print_jobs()
-                self._scheduler.start()
+        if self._cron or self._onlyonce:
+            # 启动服务
+            self._scheduler.print_jobs()
+            self._scheduler.start()
+        if not StringUtils.is_string_and_not_empty(self._cron):
+            self._cron = "0 0 */24 * *"
 
     def get_status(self):
         """
@@ -93,8 +92,8 @@ class ProwlarrShaw(_PluginBase):
         """
         if not self._api_key or not self._host:
             return False
-        self._sites = self.get_indexers()
-        return True if isinstance(self._sites, list) and len(self._sites) > 0 else False
+        self._indexers = self.get_indexers()
+        return True if isinstance(self._indexers, list) and len(self._indexers) > 0 else False
 
     def get_state(self) -> bool:
         return self._enabled
@@ -149,14 +148,13 @@ class ProwlarrShaw(_PluginBase):
                 return []
 
             indexers = [{
-                "id": f'{v["indexerName"]}-{self.plugin_name}',
+                "id": f'{self.plugin_name}-{v["indexerName"]}',
                 "name": f'【{self.plugin_name}】{v["indexerName"]}',
                 "url": f'{self._host}/api/v1/indexer/{v["indexerId"]}',
                 "domain": StringUtils.get_url_domain(self._host),
                 "public": True,
-                # "builtin": False,
-                "proxy": True,
-                "parser": "Plugin"
+                "proxy": False,
+                "parser": "PluginExtendSpider"
             } for v in ret_indexers]
             return indexers
         except Exception as e:
@@ -362,16 +360,16 @@ class ProwlarrShaw(_PluginBase):
         }
     def _ensure_sites_loaded(self) -> bool:
         """
-        确保 self._sites 已加载数据，若为空则尝试重新加载。
+        确保 self._indexers 已加载数据，若为空则尝试重新加载。
         :return: 成功加载返回 True，否则 False
         """
-        if isinstance(self._sites, list) and len(self._sites) > 0:
+        if isinstance(self._indexers, list) and len(self._indexers) > 0:
             return True
 
         # 尝试重新加载站点数据
         self.get_status()
 
-        return isinstance(self._sites, list) and len(self._sites) > 0
+        return isinstance(self._indexers, list) and len(self._indexers) > 0
     def get_page(self) -> List[dict]:
         """
         拼装插件详情页面，需要返回页面配置，同时附带数据
@@ -380,7 +378,7 @@ class ProwlarrShaw(_PluginBase):
             return []
 
         items = []
-        for site in self._sites:
+        for site in self._indexers:
             items.append({
                 'component': 'tr',
                 'content': [
