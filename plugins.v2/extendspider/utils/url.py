@@ -1,4 +1,7 @@
 import urllib.parse
+from urllib.parse import unquote, parse_qs, urlparse
+
+
 def xn_url_encode(s):
     # 使用 encodeURIComponent 的 Python 等价操作
     s = urllib.parse.quote(s)
@@ -30,3 +33,10 @@ def xn_url_decode(s):
     decoded = urllib.parse.unquote(s)
 
     return decoded
+
+
+def get_dn(magnet_link):
+    parsed = urlparse(magnet_link)
+    query_params = parse_qs(parsed.query)
+    # 获取 dn 参数并解码
+    return unquote(query_params.get('dn', [''])[0])

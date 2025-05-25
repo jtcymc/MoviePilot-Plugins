@@ -11,15 +11,12 @@ import threading
 
 
 class Bt1louSpider(_ExtendSpiderBase):
-    #   网站搜索接口请求头
-    spider_headers = {}
-    #  网站搜索接口
-    spider_search_url = ""
     #  网站搜索接口Cookie
     spider_cookie = ""
-
+    _result_lock = None
     def __init__(self, config: dict = None):
         super(Bt1louSpider, self).__init__(config)
+        self._result_lock = None
         logger.info(f"初始化 {self.spider_name} 爬虫")
         # 初始化线程锁
         self._torrent_lock = threading.Lock()
@@ -39,36 +36,20 @@ class Bt1louSpider(_ExtendSpiderBase):
         }
         self.spider_search_url = f"{self.spider_url}/search-$key$-$page$.htm"
         self.spider_cookie = ""
-        if self.spider_proxy:
-            # 初始化代理
-            proxy_config = {
-                'proxy_type': 'flaresolverr',
-                'flaresolverr_url': settings.FLARESOLVERR_URL,
-                'request_interval': self.spider_request_interval
-            }
-        else:
-            proxy_config = {
-                'proxy_type': 'direct',
-                'request_interval': self.spider_request_interval
-            }
-
-        self.spider_proxy_client = ProxyFactory.create_proxy(headers=self.spider_headers,
-                                                             **proxy_config)
-        logger.info(f"初始化代理类型: {proxy_config.get("proxy_type")}, 配置: {proxy_config}")
 
     def _get_cookie(self):
         # 访问主页获取 cookie
         try:
-            logger.info(f"正在获取 {self.spider_name} 的 Cookie...")
+            logger.info(f"{self.spider_name}-正在获取 {self.spider_name} 的 Cookie...")
             response = self.spider_proxy_client.request('GET', self.spider_url)
             if response.cookies:
                 self.spider_cookie = "; ".join([f"{cookie.name}={cookie.value}" for cookie in response.cookies])
                 self.spider_headers["Cookie"] = self.spider_cookie
-                logger.info(f"成功获取 Cookie: {self.spider_cookie}")
+                logger.info(f"{self.spider_name}-成功获取 Cookie: {self.spider_cookie}")
             else:
-                logger.warning("未获取到 Cookie")
+                logger.warning(f"{self.spider_name}-未获取到 Cookie")
         except Exception as e:
-            logger.error(f"获取 Cookie 失败: {str(e)}")
+            logger.error(f"{self.spider_name}-获取 Cookie 失败: {str(e)}")
 
     def _get_page(self, page: int) -> str:
         if page <= self.spider_page_start:
@@ -83,7 +64,7 @@ class Bt1louSpider(_ExtendSpiderBase):
 
     def _do_search(self, keyword: str, page: int):
         if not keyword:
-            logger.warning("搜索关键词为空")
+            logger.warning(f"{self.spider_name}-搜索关键词为空")
             return []
         # 确保已经初始化并获取了 cookie
         if not self.spider_cookie:
@@ -92,20 +73,20 @@ class Bt1louSpider(_ExtendSpiderBase):
         try:
             # 如果起始页大于1，只抓取指定页
             if page > self.spider_page_start:
-                logger.info(f"指定页码 {page} 大于起始页 {self.spider_page_start}，只抓取指定页")
+                logger.info(f"{self.spider_name}-指定页码 {page} 大于起始页 {self.spider_page_start}，只抓取指定页")
                 return self._search_page(keyword, page)
 
             # 获取总页数
             search_url = self.get_search_url(keyword, 1)
             if not search_url:
-                logger.error("生成搜索URL失败")
+                logger.error(f"{self.spider_name}-生成搜索URL失败")
                 return []
             # 间隔
             self.spider_proxy_client.wait_for_interval()
-            logger.info(f"开始搜索: {keyword}, 页码: 1, URL: {search_url}")
+            logger.info(f"{self.spider_name}-开始搜索: {keyword}, 页码: 1, URL: {search_url}")
             response = self.spider_proxy_client.request('GET', search_url)
             if response.status_code != 200:
-                logger.error(f"搜索请求失败: HTTP {response.status_code}")
+                logger.error(f"{self.spider_name}-搜索请求失败: HTTP {response.status_code}")
                 return []
 
             # 解析总页数
@@ -116,7 +97,7 @@ class Bt1louSpider(_ExtendSpiderBase):
 
             # 计算需要抓取的页数
             pages_to_fetch = min(total_pages or 1, self.spider_max_load_page)
-            logger.info(f"总页数: {total_pages or 1}, 将抓取前 {pages_to_fetch} 页")
+            logger.info(f"{self.spider_name}-总页数: {total_pages or 1}, 将抓取前 {pages_to_fetch} 页")
             # 抓取第一页
             results.extend(self._parse_search_result(response))
 
@@ -124,7 +105,7 @@ class Bt1louSpider(_ExtendSpiderBase):
                 return results
 
             # 使用线程池并发抓取后续页面
-            with ThreadPoolExecutor(max_workers=min(5, pages_to_fetch)) as executor:
+            with ThreadPoolExecutor(max_workers=pages_to_fetch) as executor:
                 # 创建任务
                 future_to_page = {
                     executor.submit(self._search_page, keyword, current_page): current_page
@@ -138,14 +119,14 @@ class Bt1louSpider(_ExtendSpiderBase):
                         page_results = future.result()
                         with self._result_lock:
                             results.extend(page_results)
-                            logger.info(f"第 {current_page} 页抓取完成，找到 {len(page_results)} 个结果")
+                            logger.info(f"{self.spider_name}-第 {current_page} 页抓取完成，找到 {len(page_results)} 个结果")
                     except Exception as e:
-                        logger.error(f"抓取第 {current_page} 页时发生错误: {str(e)}")
+                        logger.error(f"{self.spider_name}-抓取第 {current_page} 页时发生错误: {str(e)}")
 
-            logger.info(f"搜索完成，共找到 {len(results)} 个结果")
+            logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
             return results
         except Exception as e:
-            logger.error(f"搜索过程发生错误: {str(e)}")
+            logger.error(f"{self.spider_name}-搜索过程发生错误: {str(e)}")
             return []
 
     def _search_page(self, keyword: str, page: int):
@@ -153,17 +134,17 @@ class Bt1louSpider(_ExtendSpiderBase):
         try:
             search_url = self.get_search_url(keyword, page)
 
-            logger.info(f"正在抓取第 {page} 页: {search_url}")
+            logger.info(f"{self.spider_name}-正在抓取第 {page} 页: {search_url}")
             response = self.spider_proxy_client.request('GET', search_url)
             if response.status_code != 200:
-                logger.error(f"抓取第 {page} 页失败: HTTP {response.status_code}")
+                logger.error(f"{self.spider_name}-抓取第 {page} 页失败: HTTP {response.status_code}")
                 return []
 
             results = self._parse_search_result(response)
-            logger.info(f"第 {page} 页抓取完成，找到 {len(results)} 个结果")
+            logger.info(f"{self.spider_name}-第 {page} 页抓取完成，找到 {len(results)} 个结果")
             return results
         except Exception as e:
-            logger.error(f"抓取第 {page} 页时发生错误: {str(e)}")
+            logger.error(f"{self.spider_name}-抓取第 {page} 页时发生错误: {str(e)}")
             return []
 
     @staticmethod
@@ -240,7 +221,7 @@ class Bt1louSpider(_ExtendSpiderBase):
                 ).strip()
                 # 检查标题是否已处理过
                 if title in _processed_titles:
-                    logger.info(f"跳过重复标题: {title}")
+                    logger.info(f"{self.spider_name}-跳过重复标题: {title}")
                     continue
                 detail_url = title_link['href']
                 if not detail_url.startswith("http"):
@@ -248,7 +229,7 @@ class Bt1louSpider(_ExtendSpiderBase):
 
                 # 检查URL是否已处理过
                 if detail_url in _processed_urls:
-                    logger.info(f"跳过已处理详情页: {detail_url}")
+                    logger.info(f"{self.spider_name}-跳过已处理详情页: {detail_url}")
                     continue
 
                 # 添加到待处理列表
@@ -258,19 +239,19 @@ class Bt1louSpider(_ExtendSpiderBase):
             if not detail_urls:
                 return results
             # 使用线程池并发获取种子信息
-            logger.info(f"开始并发获取 {len(detail_urls)} 个详情页的种子信息")
+            logger.info(f"{self.spider_name}-开始并发获取 {len(detail_urls)} 个详情页的种子信息")
 
             def fetch_detail(detail_url_str):
                 try:
                     state, torrents = self._get_torrent_thread_safe(_processed_torrent_titles, detail_url_str)
                     if state:
-                        logger.info(f"成功获取详情页 {detail_url_str} 的种子信息: {len(torrents)} 个")
+                        logger.info(f"{self.spider_name}-成功获取详情页 {detail_url_str} 的种子信息: {len(torrents)} 个")
                     return torrents if state else []
                 except Exception as ex:
-                    logger.error(f"详情抓取失败: {detail_url_str}: {str(ex)}")
+                    logger.error(f"{self.spider_name}-详情抓取失败: {detail_url_str}: {str(ex)}")
                     return []
 
-            with ThreadPoolExecutor(max_workers=min(4, len(detail_urls))) as executor:
+            with ThreadPoolExecutor(max_workers=min(8, len(detail_urls))) as executor:
                 futures = {
                     executor.submit(fetch_detail, detail_url_s): detail_url_s
                     for _, detail_url_s in detail_urls
@@ -280,17 +261,17 @@ class Bt1louSpider(_ExtendSpiderBase):
                     with self._result_lock:
                         results.extend(page_results)
 
-            logger.info(f"本页共处理 {len(detail_urls)} 个详情页，获取到 {len(results)} 个种子")
+            logger.info(f"{self.spider_name}-本页共处理 {len(detail_urls)} 个详情页，获取到 {len(results)} 个种子")
             return results
         except Exception as e:
-            logger.error(f"解析搜索结果失败: {str(e)}")
+            logger.error(f"{self.spider_name}-解析搜索结果失败: {str(e)}")
             return results
 
     def _get_torrent_thread_safe(self, _processed_torrent_titles: set, detail_url: str) -> Tuple[bool, list]:
         """线程安全的获取种子信息"""
         results = []
         try:
-            logger.debug(f"正在请求详情页: {detail_url}")
+            logger.debug(f"{self.spider_name}-正在请求详情页: {detail_url}")
             response = self.spider_proxy_client.request('GET', detail_url)
             if response.status_code != 200:
                 return False, []
@@ -305,7 +286,7 @@ class Bt1louSpider(_ExtendSpiderBase):
                 # 使用线程锁保护共享资源的访问
                 with self._torrent_lock:
                     if title in _processed_torrent_titles:
-                        logger.info(f"跳过已处理种子：{title}")
+                        logger.info(f"{self.spider_name}-跳过已处理种子：{title}")
                         continue
                     _processed_torrent_titles.add(title)
 
@@ -313,14 +294,14 @@ class Bt1louSpider(_ExtendSpiderBase):
                 # 判断是否是磁力链接
                 if href.startswith('magnet:?'):
                     enclosure = href
-                    logger.debug(f"找到磁力链接: {enclosure}")
+                    logger.debug(f"{self.spider_name}-找到磁力链接: {enclosure}")
                 else:
                     # 处理普通下载链接
                     if href.startswith('http'):
                         enclosure = href
                     else:
                         enclosure = f"{self.spider_url}/{href}"
-                    logger.debug(f"找到下载链接: {enclosure}")
+                    logger.debug(f"{self.spider_name}-找到下载链接: {enclosure}")
 
                 results.append({
                     "title": title,
@@ -328,27 +309,16 @@ class Bt1louSpider(_ExtendSpiderBase):
                     "description": title,
                     "page_url": detail_url,
                 })
-                logger.info(f"找到种子: {title}")
+                logger.info(f"{self.spider_name}-找到种子: {title}")
             return True, results
         except Exception as e:
-            logger.error(f"获取种子链接失败: {str(e)}")
+            logger.error(f"{self.spider_name}-获取种子链接失败: {str(e)}")
             return False, results
-
-    def search(self, keyword: str, page: int):
-        """
-        搜索资源，支持限速控制。
-        :param keyword: 搜索关键词
-        :param page: 分页页码
-        :return: 匹配的种子资源列表
-        """
-        # 检查是否触发限速
-        state, _ = self.check_ratelimit()
-        return [] if state else self._do_search(keyword, page)
-
 
 if __name__ == "__main__":
     lou = Bt1louSpider({
         'proxy_type': 'flaresolverr',
+        'spider_enable': True,
         'proxy_config': {
             'flaresolverr_url': 'http://192.168.68.116:8191'
         },

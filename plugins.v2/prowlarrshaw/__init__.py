@@ -5,6 +5,7 @@ import re
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from cachetools import cached, TTLCache
 
 from app.plugins import _PluginBase
 from app.core.config import settings
@@ -162,6 +163,8 @@ class ProwlarrShaw(_PluginBase):
             logger.error(str(e))
             return []
 
+    @cached(cache=TTLCache(maxsize=200, ttl=2 * 3600),
+            key=lambda self, indexer, keyword, page: (id(self), indexer.get("id"), keyword, page))
     def search(self, indexer, keyword, page):
         """
         根据关键字多线程检索

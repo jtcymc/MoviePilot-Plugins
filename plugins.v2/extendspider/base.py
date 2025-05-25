@@ -3,7 +3,9 @@ from typing import Optional, Tuple
 
 from cachetools import TTLCache, cached
 
+from core.config import settings
 from log import logger
+from modules.indexer.utils.proxy import ProxyFactory
 from sites import SiteRateLimiter
 from utils.string import StringUtils
 import requests
@@ -44,6 +46,11 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     # 爬虫网站连通
     spider_web_status = True
 
+    #  请求头
+    spider_headers = {}
+    #  网站搜索接口
+    spider_search_url = ""
+
     # UA
     spider_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0"
 
@@ -57,9 +64,27 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         # 初始化限速器
         self._limiters[self.spider_name] = SiteRateLimiter(
             limit_interval=60,
-            limit_count=3,
+            limit_count=20,
             limit_seconds=60
         )
+        if self.spider_proxy:
+            # 初始化代理
+            proxy_config = {
+                'proxy_type': 'flaresolverr',
+                'flaresolverr_url': settings.FLARESOLVERR_URL,
+                # 'flaresolverr_url': 'http://192.168.68.116:8191',
+                'request_interval': self.spider_request_interval,
+                'session_id': f"moviepilot_{self.spider_name}"
+            }
+        else:
+            proxy_config = {
+                'proxy_type': 'direct',
+                'request_interval': self.spider_request_interval
+            }
+
+        self.spider_proxy_client = ProxyFactory.create_proxy(headers=self.spider_headers,
+                                                             **proxy_config)
+        logger.info(f"初始化代理类型: {proxy_config.get("proxy_type")}, 配置: {proxy_config}")
 
     @abstractmethod
     def init_spider(self, config: dict = None):
@@ -136,7 +161,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         except Exception as e:
             return False, f"测试过程发生异常: {str(e)}"
 
-    @cached(cache=TTLCache(maxsize=1, ttl= 8 * 3600))
+    # @cached(cache=TTLCache(maxsize=200, ttl=2 * 3600), key=lambda self, keyword, page: (id(self), keyword, page))
     def search(self, keyword: str, page: int):
         """
         搜索资源，支持限速控制。
@@ -147,11 +172,16 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         if not self.get_enable() or not self.get_web_status():
             logger.warn(f"爬虫 {self.spider_name} 已被禁用/或网站连通测试失败，请检查配置！")
             return []
+        if not keyword:
+            logger.warning("搜索关键词为空")
+            return []
         # 检查是否触发限速
-        state, msg = self.check_ratelimit()
+        state, _ = self.check_ratelimit()
         if state:
             return []
-        return self._do_search(keyword, page)
+        logger.info(f"{self.spider_name}开始搜索 检索词: {keyword} ")
+        new_page = page if page > 1 else 1
+        return self._do_search(keyword, page=new_page)
 
     @abstractmethod
     def _do_search(self, keyword: str, page: int):
