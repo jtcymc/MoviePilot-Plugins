@@ -42,7 +42,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     # 代理实例
     spider_proxy_client = None  # 请求间隔时间范围（秒）
     #  请求间隔时间
-    spider_request_interval = (1, 3)  # 最小2秒，最大5秒
+    spider_request_interval = (0.6, 1.8)  # 最小2秒，最大5秒
     # 爬虫网站连通
     spider_web_status = True
 
@@ -72,7 +72,6 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
             proxy_config = {
                 'proxy_type': 'flaresolverr',
                 'flaresolverr_url': settings.FLARESOLVERR_URL,
-                # 'flaresolverr_url': 'http://192.168.68.116:8191',
                 'request_interval': self.spider_request_interval,
                 'session_id': f"moviepilot_{self.spider_name}"
             }
