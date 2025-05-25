@@ -22,12 +22,18 @@ spider_configs = \
                           'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                           },
         "Dytt8899Spider": {'spider_name': 'Dytt8899Spider',
-                           'spider_enable': True,
+                           'spider_enable': False,
                            'spider_proxy': False,
                            'spider_desc': '电影天堂_电影下载_高清首发',
                            'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                            },
         "BtdxSpider": {'spider_name': 'BtdxSpider',
+                       'spider_enable': False,
+                       'spider_proxy': True,
+                       'spider_desc': '比特大雄_BT电影天堂_最新720P、1080P高清电影BT种子免注册下载网站',
+                       'plugin_name': 'ExtendSpider'  # 必须和插件名一致
+                       },
+        "BtBtlSpider": {'spider_name': 'BtBtlSpider',
                        'spider_enable': True,
                        'spider_proxy': True,
                        'spider_desc': '比特大雄_BT电影天堂_最新720P、1080P高清电影BT种子免注册下载网站',
