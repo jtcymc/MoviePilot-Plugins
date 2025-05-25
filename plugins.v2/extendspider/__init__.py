@@ -36,7 +36,7 @@ spider_configs = \
         "BtBtlSpider": {'spider_name': 'BtBtlSpider',
                        'spider_enable': True,
                        'spider_proxy': True,
-                       'spider_desc': '比特大雄_BT电影天堂_最新720P、1080P高清电影BT种子免注册下载网站',
+                       'spider_desc': 'BT影视_4k高清电影BT下载_蓝光迅雷电影下载_最新电视剧下载',
                        'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                        }
     }
