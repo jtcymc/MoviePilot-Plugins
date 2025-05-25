@@ -1,38 +1,41 @@
 {
-    "JackettShaw": {
-        "name": "Jackett",
-        "description": "索引器支持检索Jackett站点资源",
-        "labels": "索引器,Jackett",
-        "version": "1.0",
-        "icon": "Jackett.png",
-        "author": "shaw",
-        "level": 1,
-        "history": {
-            "v1.0": "适配MoviePilot V2 版本"
-        }
-    },
-    "ProwlarrShaw": {
-        "name": "Prowlarr",
-        "description": "索引器支持检索Prowlarr站点资源",
-        "labels": "索引器,Prowlarr",
-        "version": "1.0",
-        "icon": "Prowlarr.png",
-        "author": "shaw",
-        "level": 1,
-        "history": {
-            "v1.0": "适配MoviePilot V2 版本"
-        }
-    },
-        "ExtendSpider": {
-        "name": "ExtendSpider",
-        "description": "以插件的方式获取索引器信息，支持更多的站点（app/sites/site_indexer.py和app/sites/sites.py的支持）",
-        "labels": "索引器,ExtendSpider",
-        "version": "1.0",
-        "icon": "ExtendSpider.png",
-        "author": "shaw",
-        "level": 1,
-        "history": {
-            "v1.0": "适配MoviePilot V2 版本"
-        }
+  "JackettShaw": {
+    "name": "Jackett",
+    "description": "索引器支持检索Jackett站点资源",
+    "labels": "索引器,Jackett",
+    "version": "1.1",
+    "icon": "Jackett.png",
+    "author": "shaw",
+    "level": 1,
+    "history": {
+      "v1.0": "适配MoviePilot V2 版本",
+      "v1.1": "优化逻辑，增加数据缓存"
     }
+  },
+  "ProwlarrShaw": {
+    "name": "Prowlarr",
+    "description": "索引器支持检索Prowlarr站点资源",
+    "labels": "索引器,Prowlarr",
+    "version": "1.1",
+    "icon": "Prowlarr.png",
+    "author": "shaw",
+    "level": 1,
+    "history": {
+      "v1.0": "适配MoviePilot V2 版本",
+      "v1.1": "优化逻辑，增加数据缓存"
+    }
+  },
+  "ExtendSpider": {
+    "name": "ExtendSpider",
+    "description": "以插件的方式获取索引器信息，支持更多的站点（app/sites/site_indexer.py和app/sites/sites.py的支持）",
+    "labels": "索引器,ExtendSpider",
+    "version": "1.1",
+    "icon": "ExtendSpider.png",
+    "author": "shaw",
+    "level": 1,
+    "history": {
+      "v1.0": "适配MoviePilot V2 版本",
+      "v1.1": "* 优化逻辑，增加数据缓存;<br/> * 适配更多BT源"
+    }
+  }
 }
