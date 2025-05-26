@@ -1,13 +1,7 @@
-import urllib.parse
 from concurrent.futures import as_completed, ThreadPoolExecutor
-from typing import Tuple
 from bs4 import BeautifulSoup
 from app.log import logger
-from core.config import settings
 from plugins.extendspider.base import _ExtendSpiderBase
-from modules.indexer.utils.proxy import ProxyFactory
-from plugins.extendspider.utils.guard_js import get_guard_ret
-from plugins.extendspider.utils.url import xn_url_encode, get_dn
 import requests
 
 from utils.string import StringUtils

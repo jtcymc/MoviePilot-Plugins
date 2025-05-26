@@ -2,9 +2,7 @@ from typing import Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from app.log import logger
-from core.config import settings
 from plugins.extendspider.base import _ExtendSpiderBase
-from modules.indexer.utils.proxy import ProxyFactory
 from plugins.extendspider.utils.url import xn_url_encode
 import requests
 import threading
@@ -317,6 +315,7 @@ class Bt1louSpider(_ExtendSpiderBase):
 
 if __name__ == "__main__":
     lou = Bt1louSpider({
+        'spider_name': 'Bt1louSpider',
         'proxy_type': 'flaresolverr',
         'spider_enable': True,
         'proxy_config': {
