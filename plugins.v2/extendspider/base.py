@@ -168,7 +168,8 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         :param page: 分页页码
         :return: 匹配的种子资源列表
         """
-        if not self.get_enable() or not self.get_web_status():
+        # or not self.get_web_status()
+        if not self.get_enable() :
             logger.warn(f"爬虫 {self.spider_name} 已被禁用/或网站连通测试失败，请检查配置！")
             return []
         if not keyword:
