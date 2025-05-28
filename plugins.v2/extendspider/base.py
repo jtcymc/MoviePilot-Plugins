@@ -1,14 +1,21 @@
+import concurrent
+import random
+import threading
+import time
 from abc import ABCMeta, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Tuple
 
-from cachetools import TTLCache, cached
-
-from core.config import settings
-from log import logger
-from modules.indexer.utils.proxy import ProxyFactory
-from sites import SiteRateLimiter
-from utils.string import StringUtils
+from app.core.config import settings
+from app.helper.search_filter import SearchFilterHelper
+from app.log import logger
+from app.modules.indexer.utils.proxy import ProxyFactory
+from app.schemas import SearchContext
+from app.sites import SiteRateLimiter
+from app.utils.string import StringUtils
 import requests
+
+from plugins.extendspider.utils.url import get_magnet_info_from_url
 
 
 class _ExtendSpiderBase(metaclass=ABCMeta):
@@ -51,8 +58,16 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     #  网站搜索接口
     spider_search_url = ""
 
+    #  是否支持浏览
+    support_browse = False
+
+    # 是否支持imdb_id
+    support_imdb_id = False
+
+    _request_result_lock = None
+
     # UA
-    spider_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0"
+    spider_ua = ""
 
     def __init__(self, config: dict = None):
         self._plugin_name = config.get("plugin_name")
@@ -60,35 +75,85 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         self.spider_desc = config.get("spider_desc")
         self.spider_enable = config.get("spider_enable")
         self.spider_proxy = config.get("spider_proxy")
+        self.spider_ua = config.get("spider_ua", settings.USER_AGENT)
         self.init_spider(config)
         # 初始化限速器
         self._limiters[self.spider_name] = SiteRateLimiter(
-            limit_interval=60,
+            limit_interval=40,
             limit_count=20,
-            limit_seconds=60
+            limit_seconds=10
         )
-        if self.spider_proxy:
-            # 初始化代理
-            proxy_config = {
-                'proxy_type': 'flaresolverr',
-                'flaresolverr_url': settings.FLARESOLVERR_URL,
-                'request_interval': self.spider_request_interval,
-                'session_id': f"moviepilot_{self.spider_name}"
+        self._min_interval, self._max_interval = self.spider_request_interval
+        self._last_request_time = 0
+
+        # 初始化代理配置
+        proxy_type = config.get("proxy_type", "direct")
+        proxy_config = config.get("proxy_config", {})
+
+        if proxy_type == "playwright":
+            logger.info(f"{self.spider_name}-初始化代理类型: playwright")
+            self.spider_proxy_client = {
+                "type": "playwright",
+                "config": proxy_config
             }
         else:
-            proxy_config = {
-                'proxy_type': 'direct',
-                'request_interval': self.spider_request_interval
-            }
+            if self.spider_proxy:
+                # 初始化代理
+                proxy_config = {
+                    'proxy_type': 'flaresolverr',
+                    'flaresolverr_url': settings.FLARESOLVERR_URL,
+                    # 'request_interval': self.spider_request_interval,
+                    'session_id': f"moviepilot_{self.spider_name}"
+                }
+            else:
+                proxy_config = {
+                    'proxy_type': 'direct',
+                    # 'request_interval': self.spider_request_interval
+                }
 
-        self.spider_proxy_client = ProxyFactory.create_proxy(headers=self.spider_headers,
-                                                             **proxy_config)
-        logger.info(f"初始化代理类型: {proxy_config.get("proxy_type")}, 配置: {proxy_config}")
+            self.spider_proxy_client = ProxyFactory.create_proxy(headers=self.spider_headers,
+                                                                 **proxy_config)
+            logger.info(f"{self.spider_name}-初始化代理类型: {proxy_config.get('proxy_type')}, 配置: {proxy_config}")
+        # 初始化过滤
+        self.search_helper = SearchFilterHelper()
+        # 初始化线程锁
+        self._request_result_lock = threading.Lock()
 
     @abstractmethod
     def init_spider(self, config: dict = None):
         """
         :param config: 配置信息字典
+        """
+        pass
+
+    def _wait_for_interval(self):
+        """等待请求间隔"""
+        if self._max_interval > 0:
+            current_time = time.time()
+            elapsed = current_time - self._last_request_time
+            if elapsed < self._min_interval:
+                # 生成随机等待时间
+                wait_time = random.uniform(self._min_interval, self._max_interval)
+                time.sleep(wait_time - elapsed)
+            self._last_request_time = time.time()
+
+
+    def _wait(self):
+        """等待随机间隔时间"""
+        with self._request_result_lock:  # 使用请求锁确保间隔时间正确执行
+            delay = random.uniform(*self.spider_request_interval)
+            time.sleep(delay)
+
+    def browse(self) -> list:
+        """
+        浏览页面，用于推荐
+        """
+        pass
+
+    def search_by_imdb_id(self, imdb_id: Optional[str] = None) -> list:
+        """
+        :param imdb_id: imdb_id
+        :return: 搜索结果
         """
         pass
 
@@ -119,7 +184,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         # 检查是否触发限速
         sate, msg = self.test_connectivity()
         self.spider_web_status = sate
-        logger.info(f"{self.spider_name} 测试网站连通性 {sate} {msg}")
+        logger.info(f"{self.spider_name}-测试网站连通性 {sate} {msg}")
         return self.spider_web_status
 
     def get_indexer(self) -> dict:
@@ -147,12 +212,29 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
             return False, f"爬虫 {self.get_name()} 触发限速，请稍后再试"
         try:
             logger.info(f"正在测试 {self.spider_name} 代理连通性...")
-            # 使用代理访问
-            proxy_response = self.spider_proxy_client.request('GET', self.spider_url)
-            if proxy_response.status_code != 200:
-                return False, f"代理访问失败: HTTP {proxy_response.status_code}"
-            logger.info(f"{self.spider_name} 网站连通性测试通过")
-            return True, "网站连通性测试通过"
+
+            # 如果是 playwright 代理
+            if isinstance(self.spider_proxy_client, dict) and self.spider_proxy_client.get("type") == "playwright":
+                from playwright.sync_api import sync_playwright
+                with sync_playwright() as playwright:
+                    browser = playwright.chromium.launch(headless=True)
+                    context = browser.new_context()
+                    page = context.new_page()
+                    try:
+                        response = page.goto(self.spider_url)
+                        if response.status == 200:
+                            return True, "网站连通性测试通过"
+                        return False, f"代理访问失败: HTTP {response.status}"
+                    finally:
+                        browser.close()
+            else:
+                # 使用代理访问
+                proxy_response = self.spider_proxy_client.request('GET', self.spider_url)
+                if proxy_response.status_code != 200:
+                    return False, f"代理访问失败: HTTP {proxy_response.status_code}"
+                logger.info(f"{self.spider_name} 网站连通性测试通过")
+                return True, "网站连通性测试通过"
+
         except requests.exceptions.Timeout:
             return False, "网站访问超时"
         except requests.exceptions.ConnectionError:
@@ -161,30 +243,56 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
             return False, f"测试过程发生异常: {str(e)}"
 
     # @cached(cache=TTLCache(maxsize=200, ttl=2 * 3600), key=lambda self, keyword, page: (id(self), keyword, page))
-    def search(self, keyword: str, page: int):
+    def search(self, keyword: str, page: int, context_id: Optional[str] = None):
         """
         搜索资源，支持限速控制。
         :param keyword: 搜索关键词
         :param page: 分页页码
+        :param context_id: 上下文id
         :return: 匹配的种子资源列表
         """
-        # or not self.get_web_status()
-        if not self.get_enable() :
-            logger.warn(f"爬虫 {self.spider_name} 已被禁用/或网站连通测试失败，请检查配置！")
-            return []
-        if not keyword:
-            logger.warning("搜索关键词为空")
-            return []
+        context = self.search_helper.get_search_context(context_id)
+        if not context:
+            context = SearchContext(context_id=context_id)
+        state, result = self._pre_search_check(keyword, context=context)
+        if not state:
+            return result
+        logger.info(f"{self.spider_name}-开始搜索 检索词: {keyword} ")
+        new_page = page if page > 1 else 1
+
+        return self._do_search(keyword, page=new_page, ctx=context)
+
+    def _pre_search_check(self, keyword: str, context: SearchContext) -> Tuple[bool, list]:
+        """
+        预检搜索
+        :param keyword: 搜索关键词
+        :param context: 上下文
+        :return: (是否通过, 搜索结果)
+        """
+        # 检查是否启用
+        if not self.get_enable():
+            logger.warn(f"爬虫 {self.spider_name}-已被禁用/或网站连通测试失败，请检查配置！")
+            return False, []
         # 检查是否触发限速
         state, _ = self.check_ratelimit()
         if state:
-            return []
-        logger.info(f"{self.spider_name}开始搜索 检索词: {keyword} ")
-        new_page = page if page > 1 else 1
-        return self._do_search(keyword, page=new_page)
+            return False, []
+        # 是否是直接 获取种子资源
+        if self.support_browse:
+            logger.info(f"{self.spider_name}-开始浏览,获取种子资源")
+            return False, self.browse()
+        # 检查关键词
+        if not keyword:
+            logger.warning("搜索关键词为空")
+            return False, []
+        # 校验是否是imdbid搜索
+        if context.area == "imdbid" and self.support_imdb_id:
+            logger.info(f"{self.spider_name}-开始通过imdb_id搜索 imdb_id: {keyword} ")
+            return False, self.search_by_imdb_id(keyword)
+        return True, []
 
     @abstractmethod
-    def _do_search(self, keyword: str, page: int):
+    def _do_search(self, keyword: str, page: int, ctx: SearchContext):
         pass
 
     def check_ratelimit(self) -> Tuple[bool, str]:
@@ -198,3 +306,28 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         if msg:
             logger.warn(f"【{self.spider_name}】站点 {self._get_domain} {msg}")
         return state, msg
+
+    def _get_link_size(self, link_str: str):
+        self._wait_for_interval()
+        ret = get_magnet_info_from_url(link_str)
+        if ret:
+            logger.info(f"{self.spider_name}-获取种子信息成功: {link_str} 返回信息: {ret}")
+            return ret['size']
+        return None
+
+    def get_link_size(self, results: list):
+        if not results:
+            return
+        logger.info(f"{self.spider_name}-开始获取种子大小")
+        with ThreadPoolExecutor(max_workers=max(8, len(results))) as executor:
+            futures = {
+                executor.submit(self._get_link_size, result['enclosure']): result
+                for result in results
+                if result.get('enclosure', '').startswith("magnet:?") and not result.get('size')
+            }
+            for future in concurrent.futures.as_completed(futures):
+                result = futures[future]
+                size = future.result()
+                if size:
+                    # 更新原始对象
+                    result['size'] = size

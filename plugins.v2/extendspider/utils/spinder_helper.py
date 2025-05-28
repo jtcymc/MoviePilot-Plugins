@@ -2,8 +2,10 @@ import traceback
 from typing import List, Any, Optional, Dict, Tuple
 
 from app.helper.module import ModuleHelper
-from plugins.extendspider import _ExtendSpiderBase
 from app.log import logger
+from app.utils.singleton import SingletonClass
+from plugins.extendspider.base import _ExtendSpiderBase
+
 
 # cc = {
 #     'spider_name': '',
@@ -12,7 +14,7 @@ from app.log import logger
 # }
 
 
-class SpiderHelper:
+class SpiderHelper(metaclass=SingletonClass):
     # 所有插件列表
     _extend_plugins: Dict[str, Any] = {}
 
@@ -113,10 +115,10 @@ class SpiderHelper:
             self._extend_running_plugins = {}
         logger.info("插件停止完成")
 
-    def search(self, s_name, keyword, page):
+    def search(self, s_name, keyword, page, context_id: Optional[str] = None):
         spider = self._extend_running_plugins.get(s_name)
         if spider:
-            return spider.search(keyword, page)
+            return spider.search(keyword, page, context_id)
         return []
 
     def test_all_connectivity(self) -> Dict[str, Tuple[bool, str]]:

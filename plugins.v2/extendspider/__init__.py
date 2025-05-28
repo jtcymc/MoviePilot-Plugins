@@ -1,11 +1,11 @@
 # _*_ coding: utf-8 _*_
 from copy import copy
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 
 from app.plugins import _PluginBase
 from app.log import logger
-from plugins.extendspider.base import _ExtendSpiderBase
-from plugins.extendspider.utils.spinder_helper import SpiderHelper
+from .utils.spinder_helper import SpiderHelper
+
 
 spider_configs = \
     {
@@ -34,11 +34,11 @@ spider_configs = \
                        'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                        },
         "BtBtlSpider": {'spider_name': 'BtBtlSpider',
-                       'spider_enable': True,
-                       'spider_proxy': True,
-                       'spider_desc': 'BT影视_4k高清电影BT下载_蓝光迅雷电影下载_最新电视剧下载',
-                       'plugin_name': 'ExtendSpider'  # 必须和插件名一致
-                       }
+                        'spider_enable': True,
+                        'spider_proxy': True,
+                        'spider_desc': 'BT影视_4k高清电影BT下载_蓝光迅雷电影下载_最新电视剧下载',
+                        'plugin_name': 'ExtendSpider'  # 必须和插件名一致
+                        }
     }
 
 
@@ -166,7 +166,7 @@ class ExtendSpider(_PluginBase):
             indexers.extend(spider.get_indexers())
         return indexers
 
-    def search(self, indexer, keyword, page):
+    def search(self, indexer, keyword, page, context_id: Optional[str] = None):
         """
         根据关键字多线程检索
         """
@@ -174,7 +174,7 @@ class ExtendSpider(_PluginBase):
             return None
         s_name = indexer.get("id", "").split('-')[1]
         logger.info(f"【{self.plugin_name}】开始检索Indexer：{s_name} ...")
-        ret = self._spider_helper.search(s_name, keyword, page)
+        ret = self._spider_helper.search(s_name, keyword, page, context_id=context_id)
         logger.info(f"【{self.plugin_name}】检索Indexer：{s_name} 返回资源数：{len(ret)}")
         return ret
 
@@ -404,3 +404,4 @@ class ExtendSpider(_PluginBase):
             拼装插件详情页面，需要返回页面配置，同时附带数据
         """
         pass
+
