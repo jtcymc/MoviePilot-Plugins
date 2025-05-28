@@ -1,10 +1,13 @@
-import urllib.parse
-from typing import Tuple
 from bs4 import BeautifulSoup
 from app.log import logger
-from plugins.extendspider.base import _ExtendSpiderBase
-from plugins.extendspider.utils.url import get_dn
-import requests
+from app.core.config import settings
+from app.helper.search_filter import SearchFilterHelper
+from app.plugins.extendspider.base import _ExtendSpiderBase
+from playwright.sync_api import sync_playwright, Page
+
+from app.plugins.extendspider.utils.url import pass_cloudflare
+from app.schemas import SearchContext
+from utils.common import retry
 
 
 class BtttSpider(_ExtendSpiderBase):
@@ -18,152 +21,129 @@ class BtttSpider(_ExtendSpiderBase):
         self.spider_url = "https://www.bttt11.com"
         self.spider_search_url = f"{self.spider_url}/e/search"
         self.spider_cookie = ""
-        self.spider_headers = {
-            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            "Content-Type": "application/x-www-form-urlencoded",
-            'Referer': 'https://www.bttt11.com/',
-            'Origin': 'https://www.bttt11.com',
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0",
 
-        }
-
-    def _get_cookie(self):
-        # 访问主页获取 cookie
+    def _do_search(self, keyword: str, page: int, ctx: SearchContext):
         try:
-            logger.info(f"{self.spider_name}-正在获取 {self.spider_name} 的 Cookie...")
-            response = self.spider_proxy_client.request('GET', self.spider_url, headers={
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0",
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch(headless=True)
+                context = browser.new_context(user_agent=settings.USER_AGENT,
+                                              proxy=settings.PROXY_SERVER if self.spider_proxy else None)
+                page = context.new_page()
 
-            })
-            if response.cookies:
-                self.spider_cookie = "; ".join([f"{cookie.name}={cookie.value}" for cookie in response.cookies])
-                self.spider_headers["Cookie"] = self.spider_cookie
-                logger.info(f"{self.spider_name}-成功获取 Cookie: {self.spider_cookie}")
-            #
-            else:
-                logger.warning(f"{self.spider_name}-未获取到 Cookie")
+                try:
+                    # 访问主页并处理 Cloudflare
+                    logger.info(f"{self.spider_name}-正在访问 {self.spider_url}...")
+                    if not pass_cloudflare(self.spider_url, page):
+                        logger.warn("cloudflare challenge fail！")
+                        return []
+
+                    # 等待页面加载完成
+                    page.wait_for_load_state("networkidle", timeout=30 * 1000)
+                    logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
+                    self._wait()
+                    # 执行搜索
+                    page.fill("#search-keyword", keyword)
+                    page.click("input[name='searchtype'][value='搜索'].sub")
+                    page.wait_for_load_state("networkidle", timeout=30 * 1000)
+
+                    # 解析搜索结果
+                    results = self._parse_search_result(page, ctx)
+                    logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
+                    return results
+
+                except Exception as e:
+                    logger.error(f"搜索过程发生错误: {str(e)}")
+                    return []
+                finally:
+                    browser.close()
+
         except Exception as e:
-            logger.error(f"{self.spider_name}-获取 Cookie 失败: {str(e)}")
-
-    def get_search_payload(self, keyword: str):
-        if not keyword:
-            return ""
-        # 将字符串编码为 GB2312
-        encoded_text01 = keyword.encode('utf-8')
-        encoded_text02 = '搜索'.encode('utf-8')
-        str1_encoded = 'title,newstext'.encode('utf-8')
-        # 将编码后的字节数据转换为 URL 编码格式
-        keyboard = urllib.parse.quote(encoded_text01)
-        submit = urllib.parse.quote(encoded_text02)
-        str1_encoded = urllib.parse.quote(str1_encoded)
-        return {
-            "show": str1_encoded,
-            "keyboard": keyboard,
-            "searchtype": submit
-        }
-        # return str1_encoded + f'&keyboard={keyboard}&searchtype={submit}'
-
-    def _do_search(self, keyword: str, page: int):
-        # 确保已经初始化并获取了 cookie
-        if not self.spider_cookie:
-            self._get_cookie()
-        try:
-            results = self._search_page(keyword, page)
-            logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
-            return results
-        except Exception as e:
-            logger.error(f"{self.spider_name}-搜索过程发生错误: {str(e)}")
+            logger.error(f"Playwright 初始化失败: {str(e)}")
             return []
 
-    def _search_page(self, keyword: str, page: int):
+    def _parse_search_result(self, page: Page, ctx: SearchContext):
         try:
-            logger.info(f"{self.spider_name}-正在抓取第 {page} 页: {self.spider_search_url}")
-            response = self.spider_proxy_client.request('POST', self.spider_search_url,
-                                     headers=self.spider_headers,
-                                     data=self.get_search_payload(keyword))
-            if response.status_code != 200:
-                logger.error(f"{self.spider_name}-抓取第 {page} 页失败: HTTP {response.status_code}")
-                return []
-            results = self._parse_search_result(response)
-            logger.info(f"{self.spider_name}-第 {page} 页抓取完成，找到 {len(results)} 个结果")
-            return results
-        except Exception as e:
-            logger.error(f"{self.spider_name}-抓取第 {page} 页时发生错误: {str(e)}")
-            return []
+            # 获取页面内容
+            content = page.content()
+            soup = BeautifulSoup(content, "html.parser")
+            ul_div = soup.find("ul", class_="ul-imgtxt2 row")
 
-    def _parse_search_result(self, response: requests.Response):
-
-        try:
-            soup = BeautifulSoup(response.text, "html.parser")
-            ul_div = soup.find("div", class_="ul-imgtxt2 row")
-            # 判断是否有搜索结果
             if not ul_div:
                 return []
-            #  获取标题
-            detail_tag = ul_div.select_one("li.col-md-6 div.text h3 a")
-            detail_url = detail_tag['href'].strip()
-            if not detail_url:
-                return []
-            if not detail_url.startswith("http"):
-                detail_url = f"{self.spider_url}/{detail_url}"
-            # 使用线程池并发获取种子信息
-            logger.info(f"{self.spider_name}-开始获取 {detail_url} 详情页的种子信息")
-            try:
-                state, torrents = self._get_torrent_info(detail_url)
-                if state:
-                    logger.info(f"{self.spider_name}-成功获取详情页 {detail_url} 的种子信息: {len(torrents)} 个")
-                return torrents if state else []
-            except Exception as ex:
-                logger.error(f"{self.spider_name}-详情抓取失败: {detail_url}: {str(ex)}")
-                return []
-        except Exception as e:
-            logger.error(f"{self.spider_name}-解析搜索结果失败: {str(e)}")
-            return []
 
-    def _get_torrent_info(self, detail_url: str) -> Tuple[bool, list]:
-        """线程安全的获取种子信息"""
-        results = []
+            results = []
+            # 获取所有搜索结果
+            for item in ul_div.find_all("li", class_="col-md-6"):
+                detail_tag = item.select_one("div.txt  a")
+                if not detail_tag:
+                    continue
+
+                detail_url = detail_tag['href'].strip()
+                if not detail_url:
+                    continue
+
+                if not detail_url.startswith("http"):
+                    detail_url = f"{self.spider_url}/{detail_url}"
+                self._wait()
+                # 获取种子信息
+                logger.info(f"{self.spider_name}-开始获取 {detail_url} 详情页的种子信息")
+                torrents = self._get_torrent_info(page, detail_url, ctx)
+                results.extend(torrents)
+            return results
+
+        except Exception as e:
+            logger.error(f"解析搜索结果失败: {str(e)}")
+            return []
+    @retry(Exception, 5, 3, 2, logger=logger)
+    def _get_torrent_info(self, page: Page, detail_url: str, ctx: SearchContext) -> list:
         try:
-            response = self.spider_proxy_client.request('GET', detail_url)
-            if response.status_code != 200:
-                return False, []
-            # response.encoding = 'gb2312'
-            soup = BeautifulSoup(response.text, "html.parser")
-            a_tags = soup.select_one("div.bot a[href]")
-            titles = []
-            links = []
+            self._wait()
+            # 访问详情页
+            page.goto(detail_url)
+            page.wait_for_load_state("networkidle", timeout=30 * 1000)
+            logger.info(f"{self.spider_name}-访问详情页成功,开始获取种子信息...")
+            # 获取页面内容
+            content = page.content()
+            soup = BeautifulSoup(content, "html.parser")
+
+            results = []
+            a_tags = soup.select("div.bot a[href]")
+
             for a_tag in a_tags:
                 link = a_tag['href'].strip()
                 if not link.startswith('magnet:?'):
-                    logger.info(f"{self.spider_name}-跳过非磁力链接：{link}")
                     continue
+
                 title = a_tag.text.strip()
-                if title in titles:
-                    logger.info(f"{self.spider_name}-跳过已处理种子：{title}")
-                    continue
-                if link in links:
-                    logger.info(f"{self.spider_name}-跳过重复的链接：{link}")
-                    continue
+                title_info = SearchFilterHelper().parse_title(title)
+                if not title_info.episode:
+                    title_info.episode = SearchFilterHelper().get_episode(title)
                 results.append({
                     "title": title,
                     "enclosure": link,
                     "description": title,
                     "page_url": detail_url,
+                    "size": title_info.sie_num
                 })
-                logger.info(f"{self.spider_name}-找到种子: {title}")
-            return True, results
+                logger.debug(f"{self.spider_name}-找到种子: {title}")
+
+            if not results:
+                logger.warn(f"{self.spider_name}-没有找到种子")
+            # 过滤信息
+            # self.get_link_size(results)
+            return results
+
         except Exception as e:
-            logger.error(f"{self.spider_name}-获取种子链接失败: {str(e)}")
-            return False, results
+            logger.error(f"获取种子信息失败: {str(e)}")
+            return []
 
 
 if __name__ == "__main__":
     lou = BtttSpider({
-        'spider_proxy': True,
+        'spider_proxy': False,
         'spider_enable': True,
         'spider_name': 'BtttSpider',
-        'proxy_type': 'direct',
+        'proxy_type': 'playwright',
         'proxy_config': {
             'flaresolverr_url': 'http://192.168.68.116:8191'
         },

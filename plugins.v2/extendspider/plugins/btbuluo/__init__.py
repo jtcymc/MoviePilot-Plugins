@@ -1,78 +1,87 @@
-from typing import Tuple
+import re
+from typing import Tuple, Optional
+
 from bs4 import BeautifulSoup
 from app.log import logger
-from plugins.extendspider.base import _ExtendSpiderBase
-from plugins.extendspider.utils.url import  get_dn
-import requests
+from app.core.config import settings
+from app.plugins.extendspider.base import _ExtendSpiderBase
+from app.plugins.extendspider.utils.url import pass_cloudflare, get_dn, format_episode_title
+from playwright.sync_api import sync_playwright, Page
+from app.schemas import SearchContext
+from app.helper.search_filter import SearchFilterHelper
+from app.utils.common import retry
 
 
 class BtBuLuoSpider(_ExtendSpiderBase):
-
     #  网站搜索接口Cookie
     spider_cookie = ""
 
     def __init__(self, config: dict = None):
         super(BtBuLuoSpider, self).__init__(config)
+        logger.info(f"初始化 {self.spider_name} 爬虫")
 
     def init_spider(self, config: dict = None):
         self.spider_url = "https://www.btbuluo.net"
         self.spider_search_url = f"{self.spider_url}/s/$key$.html"
         self.spider_cookie = ""
-
-
-    def _get_cookie(self):
-        # 访问主页获取 cookie
-        try:
-            logger.info(f"{self.spider_name}-正在获取 {self.spider_name} 的 Cookie...")
-            response = self.spider_proxy_client.request('GET', self.spider_url)
-            if response.cookies:
-                self.spider_cookie = "; ".join([f"{cookie.name}={cookie.value}" for cookie in response.cookies])
-                self.spider_headers["Cookie"] = self.spider_cookie
-                logger.info(f"{self.spider_name}-成功获取 Cookie: {self.spider_cookie}")
-            else:
-                logger.warning(f"{self.spider_name}-未获取到 Cookie")
-        except Exception as e:
-            logger.error(f"{self.spider_name}-获取 Cookie 失败: {str(e)}")
+        self.spider_headers = {
+            "User-Agent": settings.USER_AGENT,
+        }
 
     def get_search_url(self, keyword: str, page: int) -> str:
         if not keyword:
             return ""
         return self.spider_search_url.replace("$key$", keyword)
 
-    def _do_search(self, keyword: str, page: int):
-        # 确保已经初始化并获取了 cookie
-        # if not self.spider_cookie:
-        #     self._get_cookie()
-        try:
-            results = self._search_page(keyword, page)
-            logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
-            return results
-        except Exception as e:
-            logger.error(f"{self.spider_name}-搜索过程发生错误: {str(e)}")
+    def _do_search(self, keyword: str, page: int, ctx: SearchContext):
+        if not keyword:
+            logger.warning(f"{self.spider_name}-搜索关键词为空")
             return []
 
-    def _search_page(self, keyword: str, page: int):
         try:
-            search_url = self.get_search_url(keyword, page)
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch(headless=True)
+                context = browser.new_context(user_agent=settings.USER_AGENT,
+                                              proxy=settings.PROXY_SERVER if self.spider_proxy else None)
+                browser_page = context.new_page()
 
-            logger.info(f"{self.spider_name}-正在抓取第 {page} 页: {search_url}")
-            response = self.spider_proxy_client.request('GET', search_url)
-            if response.status_code != 200:
-                logger.error(f"{self.spider_name}-抓取第 {page} 页失败: HTTP {response.status_code}")
-                return []
-            results = self._parse_search_result(response)
-            logger.info(f"{self.spider_name}-第 {page} 页抓取完成，找到 {len(results)} 个结果")
-            return results
+                try:
+                    # 访问主页并处理 Cloudflare
+                    logger.info(f"{self.spider_name}-正在访问 {self.spider_url}...")
+                    if not pass_cloudflare(self.spider_url, browser_page):
+                        logger.warn("cloudflare challenge fail！")
+                        return []
+
+                    # 等待页面加载完成
+                    browser_page.wait_for_load_state("networkidle", timeout=30 * 1000)
+                    logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
+                    self._wait()
+
+                    # 执行搜索
+                    search_url = self.get_search_url(keyword, page)
+                    browser_page.goto(search_url)
+                    browser_page.wait_for_load_state("networkidle", timeout=30 * 1000)
+                    results = self._parse_search_result(browser_page, ctx)
+                    logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
+                    return results
+
+                except Exception as e:
+                    logger.error(f"搜索过程发生错误: {str(e)}")
+                    return []
+                finally:
+                    browser_page.close()
+                    context.close()
+                    browser.close()
+
         except Exception as e:
-            logger.error(f"{self.spider_name}-抓取第 {page} 页时发生错误: {str(e)}")
+            logger.error(f"Playwright 初始化失败: {str(e)}")
             return []
 
-    def _parse_search_result(self, response: requests.Response):
-        # 初始化已处理标题集合
-        _processed_torrent_titles = set()
-
+    def _parse_search_result(self, page: Page, ctx: SearchContext):
         try:
-            soup = BeautifulSoup(response.text, "html.parser")
+            # 获取页面内容
+            content = page.content()
+            soup = BeautifulSoup(content, "html.parser")
             detail_tag = soup.select_one("div p a:-soup-contains('查看详情')")
             if not detail_tag:
                 return []
@@ -81,42 +90,38 @@ class BtBuLuoSpider(_ExtendSpiderBase):
                 detail_url = f"{self.spider_url}/{detail_url}"
             if not detail_url:
                 return []
-            # 使用线程池并发获取种子信息
+            # 获取种子信息
             logger.info(f"{self.spider_name}-开始获取 {detail_url} 详情页的种子信息")
-            try:
-                state, torrents = self._get_torrent_thread_safe(_processed_torrent_titles, detail_url)
-                if state:
-                    logger.info(f"{self.spider_name}-成功获取详情页 {detail_url} 的种子信息: {len(torrents)} 个")
-                return torrents if state else []
-            except Exception as ex:
-                logger.error(f"{self.spider_name}-详情抓取失败: {detail_url}: {str(ex)}")
-                return []
+            torrents = self._get_torrent_info(page, detail_url, ctx)
+            return torrents
         except Exception as e:
             logger.error(f"{self.spider_name}-解析搜索结果失败: {str(e)}")
             return []
 
-    def _get_torrent_thread_safe(self, _processed_torrent_titles: set, detail_url: str) -> Tuple[bool, list]:
-        """线程安全的获取种子信息"""
-        results = []
+    @retry(Exception, 5, 3, 2, logger=logger)
+    def _get_torrent_info(self, page: Page, detail_url: str, ctx: SearchContext) -> list:
         try:
-            response = self.spider_proxy_client.request('GET', detail_url)
-            if response.status_code != 200:
-                return False, []
-            soup = BeautifulSoup(response.text, "html.parser")
+            self._wait()
+            # 访问详情页
+            page.goto(detail_url)
+            page.wait_for_load_state("networkidle", timeout=30 * 1000)
+            logger.info(f"{self.spider_name}-访问详情页成功,开始获取种子信息...")
+            # 获取页面内容
+            content = page.content()
+            soup = BeautifulSoup(content, "html.parser")
+
+            results = []
             a_tags = soup.select("ul > li > a[title]")
-            if not a_tags:
-                return True, []
+            _processed_titles = set()
             for a_tag in a_tags:
                 link = a_tag['href'].strip()
                 if not link or link.startswith("thunder://"):
                     continue
                 title = a_tag.text.strip()
-                if title in _processed_torrent_titles:
-                    logger.info(f"{self.spider_name}-跳过已处理种子：{title}")
-                    continue                # 判断是否是磁力链接
+                # 判断是否是磁力链接
                 if link.startswith('magnet:?'):
                     enclosure = link
-                    title = get_dn(link)
+                    title = get_dn(enclosure)
                     logger.debug(f"{self.spider_name}-找到磁力链接: {enclosure}")
                 else:
                     # 处理普通下载链接
@@ -125,26 +130,42 @@ class BtBuLuoSpider(_ExtendSpiderBase):
                     else:
                         enclosure = f"{self.spider_url}/{link}"
                     logger.debug(f"{self.spider_name}-找到下载链接: {enclosure}")
-                _processed_torrent_titles.add(title)
+
+                title_info = SearchFilterHelper().parse_title(title)
+                episode, name = format_episode_title(title)
+                if not title_info.episode:
+                    title_info.episode = episode if episode else SearchFilterHelper().get_episode(title)
+                title = name
+                if title  in _processed_titles:
+                    logger.warn(f"{self.spider_name}-跳过重复的标题: {title}")
+                    continue
                 results.append({
                     "title": title,
                     "enclosure": enclosure,
                     "description": title,
                     "page_url": detail_url,
+                    "size": title_info.sie_num
                 })
+                _processed_titles.add(title)
                 logger.info(f"{self.spider_name}-找到种子: {title}")
-            return True, results
+            # 过滤信息
+            # self.get_link_size(results)
+            if not results:
+                logger.warn(f"{self.spider_name}-没有找到种子")
+            return results
+
         except Exception as e:
-            logger.error(f"{self.spider_name}-获取种子链接失败: {str(e)}")
-            return False, results
+            logger.error(f"{self.spider_name}-获取种子信息失败: {str(e)}")
+            return []
 
 
 
 if __name__ == "__main__":
     lou = BtBuLuoSpider({
-        'spider_proxy': True,
-        'spider_name': 'Bt1BuLuoSpider',
-        'proxy_type': 'flaresolverr',
+        'spider_proxy': False,
+        'spider_enable': True,
+        'spider_name': 'BtBuLuoSpider',
+        'proxy_type': 'playwright',
         'proxy_config': {
             'flaresolverr_url': 'http://192.168.68.116:8191'
         },
