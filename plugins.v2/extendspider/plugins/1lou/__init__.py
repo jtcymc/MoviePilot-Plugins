@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from app.log import logger
 from app.core.config import settings
-from app.plugins.extendspider.base import _ExtendSpiderBase
+from plugins.extendspider.plugins.base import _ExtendSpiderBase
 from app.plugins.extendspider.utils.url import pass_cloudflare, xn_url_encode
 from playwright.sync_api import sync_playwright, Page
 from playwright_stealth import stealth_sync

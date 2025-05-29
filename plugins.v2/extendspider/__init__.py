@@ -2,6 +2,8 @@
 from copy import copy
 from typing import List, Dict, Any, Tuple, Optional
 
+from cachetools import TTLCache, cached
+
 from app.plugins import _PluginBase
 from app.log import logger
 from schemas import SearchContext
@@ -63,7 +65,7 @@ class ExtendSpider(_PluginBase):
     # 插件图标
     plugin_icon = "ExtendSpider.png"
     # 插件版本
-    plugin_version = "1.0"
+    plugin_version = "1.1"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -179,6 +181,7 @@ class ExtendSpider(_PluginBase):
             indexers.extend(spider.get_indexers())
         return indexers
 
+    @cached(cache=TTLCache(maxsize=360, ttl=2 * 60 * 60))
     def search(self, indexer, keyword, page, search_context: Optional[SearchContext] = None):
         """
         根据关键字多线程检索

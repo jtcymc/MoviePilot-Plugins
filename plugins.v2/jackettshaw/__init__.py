@@ -25,7 +25,7 @@ class JackettShaw(_PluginBase):
     # 插件图标
     plugin_icon = "Jackett_A.png"
     # 插件版本
-    plugin_version = "1.0"
+    plugin_version = "1.2"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -178,8 +178,8 @@ class JackettShaw(_PluginBase):
             logger.error(str(e))
             return []
 
-    @cached(cache=TTLCache(maxsize=200, ttl=2 * 3600),
-            key=lambda self, indexer, keyword, page: (id(self), indexer.get("id"), keyword, page))
+    # @cached(cache=TTLCache(maxsize=200, ttl=2 * 3600),
+    #         key=lambda self, indexer, keyword, page: (id(self), indexer.get("id"), keyword, page))
     def search(self, indexer, keyword, page, search_context: Optional[SearchContext] = None):
         """
         根据关键字多线程检索
