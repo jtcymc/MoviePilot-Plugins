@@ -1,5 +1,5 @@
 # _*_ coding: utf-8 _*_
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime, timedelta
 import xml.dom.minidom
 import requests
@@ -11,6 +11,7 @@ from cachetools import cached, TTLCache
 from app.log import logger
 from app.plugins import _PluginBase
 from app.core.config import settings
+from schemas import SearchContext
 from utils.dom import DomUtils
 from utils.http import RequestUtils
 from utils.string import StringUtils
@@ -67,6 +68,8 @@ class JackettShaw(_PluginBase):
             self._proxy = config.get("proxy")
             self._onlyonce = config.get("onlyonce")
             self._cron = config.get("cron")
+        if not self._enabled:
+            return
         # 停止现有任务
         self.stop_service()
         # 启动定时任务 & 立即运行一次
@@ -177,7 +180,7 @@ class JackettShaw(_PluginBase):
 
     @cached(cache=TTLCache(maxsize=200, ttl=2 * 3600),
             key=lambda self, indexer, keyword, page: (id(self), indexer.get("id"), keyword, page))
-    def search(self, indexer, keyword, page):
+    def search(self, indexer, keyword, page, search_context: Optional[SearchContext] = None):
         """
         根据关键字多线程检索
         """

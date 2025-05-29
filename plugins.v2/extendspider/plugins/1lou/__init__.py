@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.plugins.extendspider.base import _ExtendSpiderBase
 from app.plugins.extendspider.utils.url import pass_cloudflare, xn_url_encode
 from playwright.sync_api import sync_playwright, Page
+from playwright_stealth import stealth_sync
 from app.schemas import SearchContext
 import threading
 
@@ -19,7 +20,6 @@ class Bt1louSpider(_ExtendSpiderBase):
     def __init__(self, config: dict = None):
         super(Bt1louSpider, self).__init__(config)
         self._result_lock = threading.Lock()
-        logger.info(f"初始化 {self.spider_name} 爬虫")
         # 初始化线程锁
         self._torrent_lock = threading.Lock()
         self.spider_max_load_page = 2
@@ -53,13 +53,34 @@ class Bt1louSpider(_ExtendSpiderBase):
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch(
                     headless=True,
-                    # args=['--no-sandbox', '--disable-setuid-sandbox']
+                    args=[
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-features=IsolateOrigins,site-per-process',
+                        '--disable-site-isolation-trials',
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-accelerated-2d-canvas',
+                        '--no-first-run',
+                        '--no-zygote',
+                        '--disable-gpu'
+                    ]
                 )
                 context = browser.new_context(
                     user_agent=settings.USER_AGENT,
-                    proxy=settings.PROXY_SERVER if self.spider_proxy else None
+                    proxy=settings.PROXY_SERVER if self.spider_proxy else None,
+                    viewport={'width': 1920, 'height': 1080},
+                    locale='zh-CN',
+                    timezone_id='Asia/Shanghai',
+                    device_scale_factor=1,
+                    has_touch=False,
+                    is_mobile=False,
+                    java_script_enabled=True,
+                    ignore_https_errors=True,
+                    permissions=['geolocation']
                 )
                 browser_page = context.new_page()
+                stealth_sync(browser_page)
 
                 try:
                     # 访问主页并处理 Cloudflare
@@ -155,7 +176,7 @@ class Bt1louSpider(_ExtendSpiderBase):
         """ 统计搜索结果页数信息 """
         _processed_titles = set()
         _processed_urls = set()
-        detail_urls = set()
+        detail_urls = {}
         # 抓取第一页
         self._parse_search_page_detail_urls(browser_page, _processed_titles,
                                             _processed_urls, detail_urls)
@@ -182,12 +203,18 @@ class Bt1louSpider(_ExtendSpiderBase):
         if not detail_urls:
             logger.info(f"{self.spider_name}-没有找到详情页，可能没有搜索到结果")
             return []
+        to_filter_titles = [title for title in detail_urls.keys()]
+        filter_titles = self.search_helper.do_filter(self.spider_name, keyword, to_filter_titles, ctx)
+        if not filter_titles:
+            logger.info(f"{self.spider_name}-没有找到符合要求的结果")
+            return []
+        detail_urls = {detail_urls[title] for title in filter_titles}
         results = self._parse_detail_results(detail_urls)
         logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
         return results
 
     @retry(Exception, 5, 3, 2, logger=logger)
-    def _parse_search_page_detail_urls(self, browser_page: Page, _processed_titles, _processed_urls, detail_urls):
+    def _parse_search_page_detail_urls(self, browser_page: Page, _processed_titles, _processed_urls, detail_urls: dict):
         """搜索结果解析，主要收集详情页信息"""
         browser_page.wait_for_load_state("networkidle", timeout=15 * 1000)
         # 获取页面内容
@@ -209,10 +236,12 @@ class Bt1louSpider(_ExtendSpiderBase):
             detail_url = title_link['href']
             if not detail_url.startswith("http"):
                 detail_url = f"{self.spider_url}/{detail_url}"
+            if title in _processed_titles or detail_url in _processed_urls:
+                continue
             # 添加到待处理列表
-            detail_urls.add(detail_url)
             _processed_titles.add(title)
             _processed_urls.add(detail_url)
+            detail_urls[title] = detail_url
         return _processed_titles, detail_urls
 
     def _parse_detail_results(self, detail_urls) -> list:
@@ -227,11 +256,38 @@ class Bt1louSpider(_ExtendSpiderBase):
         def process_url_batch(url_batch, index):
             try:
                 with sync_playwright() as playwright:
-                    browser = playwright.chromium.launch(headless=True)
-                    context = browser.new_context(user_agent=settings.USER_AGENT,
-                                                  proxy=settings.PROXY_SERVER if self.spider_proxy else None)
-                    context.add_cookies(self.spider_cookie)
+                    browser = playwright.chromium.launch(
+                        headless=True,
+                        args=[
+                            '--disable-blink-features=AutomationControlled',
+                            '--disable-features=IsolateOrigins,site-per-process',
+                            '--disable-site-isolation-trials',
+                            '--no-sandbox',
+                            '--disable-setuid-sandbox',
+                            '--disable-dev-shm-usage',
+                            '--disable-accelerated-2d-canvas',
+                            '--no-first-run',
+                            '--no-zygote',
+                            '--disable-gpu'
+                        ]
+                    )
+                    context = browser.new_context(
+                        user_agent=settings.USER_AGENT,
+                        proxy=settings.PROXY_SERVER if self.spider_proxy else None,
+                        viewport={'width': 1920, 'height': 1080},
+                        locale='zh-CN',
+                        timezone_id='Asia/Shanghai',
+                        device_scale_factor=1,
+                        has_touch=False,
+                        is_mobile=False,
+                        java_script_enabled=True,
+                        ignore_https_errors=True,
+                        permissions=['geolocation']
+                    )
+                    if self.spider_cookie:
+                        context.add_cookies(self.spider_cookie)
                     detail_page = context.new_page()
+                    stealth_sync(detail_page)
 
                     current_batch_results = []
                     try:
@@ -263,7 +319,7 @@ class Bt1louSpider(_ExtendSpiderBase):
         logger.info(f"{self.spider_name}-将 {len(detail_urls)} 个详情页分成 {len(url_batches)} 个批次处理")
 
         # 使用线程池并发处理批次
-        with ThreadPoolExecutor(max_workers=min(4, len(url_batches))) as executor:
+        with ThreadPoolExecutor(max_workers=min(6, len(url_batches))) as executor:
             future_to_batch = {
                 executor.submit(process_url_batch, batch, idx + 1): (idx, batch)
                 for idx, batch in enumerate(url_batches)
@@ -283,18 +339,12 @@ class Bt1louSpider(_ExtendSpiderBase):
         logger.info(f"{self.spider_name}-所有批次处理完成，共获取到 {len(results)} 个种子")
         return results
 
-    @retry(Exception, 3, 2, 2, logger=logger)
+    @retry(Exception, 2, 2, 2, logger=logger)
     def _get_torrent_info(self, _processed_torrent_titles: set, detail_url: str, page: Page) -> Tuple[
         bool, list]:
         """同步版本的线程安全的获取种子信息"""
         results = []
-
-        self._wait()
         logger.debug(f"{self.spider_name}-正在请求详情页: {detail_url}")
-        # if not pass_cloudflare(self.spider_url, page):
-        #     logger.warn("cloudflare challenge fail！")
-        #     return False, []
-        # self._wait()
         page.goto(detail_url)
         page.wait_for_load_state("networkidle", timeout=10 * 1000)  # 增加超时时间到15秒
 
@@ -335,8 +385,8 @@ class Bt1louSpider(_ExtendSpiderBase):
                 "title": title,
                 "enclosure": enclosure,
                 "description": title,
-                "page_url": detail_url,
-                "size": title_info.sie_num
+                # "page_url": detail_url, # 会下载字幕
+                "size": title_info.size_num
             })
             logger.info(f"{self.spider_name}-找到种子: {title}")
         return True, results

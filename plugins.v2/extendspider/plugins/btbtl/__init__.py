@@ -1,5 +1,6 @@
+import traceback
 from concurrent.futures import as_completed, ThreadPoolExecutor
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict
 
 from bs4 import BeautifulSoup
 from app.log import logger
@@ -8,9 +9,12 @@ from app.plugins.extendspider.base import _ExtendSpiderBase
 from app.plugins.extendspider.utils.url import pass_cloudflare
 from playwright.sync_api import sync_playwright, Page
 from app.schemas import SearchContext
+from playwright_stealth import stealth_sync
 
 from app.helper.search_filter import SearchFilterHelper
 from app.utils.common import retry
+from schemas import TorrentInfo
+from utils.string import StringUtils
 
 
 class BtBtlSpider(_ExtendSpiderBase):
@@ -18,14 +22,11 @@ class BtBtlSpider(_ExtendSpiderBase):
     def __init__(self, config: dict = None):
         super(BtBtlSpider, self).__init__(config)
 
-        logger.info(f"初始化 {self.spider_name} 爬虫")
+
 
     def init_spider(self, config: dict = None):
         self.spider_url = "https://www.btbtl.com"
         self.spider_search_url = f"{self.spider_url}/search/$key$"
-        self.spider_headers = {
-            "User-Agent": settings.USER_AGENT,
-        }
 
     def get_search_url(self, keyword: str, page: int) -> str:
         if not keyword:
@@ -40,10 +41,36 @@ class BtBtlSpider(_ExtendSpiderBase):
         results = []
         try:
             with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(headless=True)
-                context = browser.new_context(user_agent=settings.USER_AGENT,
-                                              proxy=settings.PROXY_SERVER if self.spider_proxy else None)
+                browser = playwright.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-features=IsolateOrigins,site-per-process',
+                        '--disable-site-isolation-trials',
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-accelerated-2d-canvas',
+                        '--no-first-run',
+                        '--no-zygote',
+                        '--disable-gpu'
+                    ]
+                )
+                context = browser.new_context(
+                    user_agent=settings.USER_AGENT,
+                    proxy=settings.PROXY_SERVER if self.spider_proxy else None,
+                    viewport={'width': 1920, 'height': 1080},
+                    locale='zh-CN',
+                    timezone_id='Asia/Shanghai',
+                    device_scale_factor=1,
+                    has_touch=False,
+                    is_mobile=False,
+                    java_script_enabled=True,
+                    ignore_https_errors=True,
+                    permissions=['geolocation']
+                )
                 browser_page = context.new_page()
+                stealth_sync(browser_page)
 
                 try:
                     # 访问主页并处理 Cloudflare
@@ -61,7 +88,7 @@ class BtBtlSpider(_ExtendSpiderBase):
                     browser_page.click("button[type='submit'].search-go")
                     browser_page.wait_for_load_state("networkidle", timeout=30 * 1000)
                     logger.info(f"{self.spider_name}-搜索完成，开始解析结果...")
-                    results = self._parse_search_result(browser_page, ctx)
+                    results = self._parse_search_result(keyword, browser_page, ctx)
                     logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
                     return results
 
@@ -77,7 +104,7 @@ class BtBtlSpider(_ExtendSpiderBase):
             logger.error(f"Playwright 初始化失败: {str(e)}")
             return []
 
-    def _parse_search_result(self, page: Page, ctx: SearchContext):
+    def _parse_search_result(self, keyword: str, page: Page, ctx: SearchContext):
         try:
             # 获取页面内容
             content = page.content()
@@ -90,24 +117,35 @@ class BtBtlSpider(_ExtendSpiderBase):
             for detail_tag in detail_tags.select("div.module-item-titlebox a.module-item-title"):
                 detail_url = detail_tag['href'].strip()
                 if not detail_url.startswith("http"):
-                    detail_url = f"{self.spider_url}/{detail_url}"
+                    detail_url = f"{self.spider_url}{detail_url}"
                 detail_urls.add(detail_url)
             results = []
             if detail_urls:
                 logger.info(f"{self.spider_name}-解析到{len(detail_urls)}个搜索结果，开始获取链接地址...")
-                down_urls = set()
+                down_urls = {}
                 for url in detail_urls:
-                    down_urls = down_urls.union(down_urls, self._get_down_urls(url, page))
+                    down_urls = self._get_down_urls(url, page, down_urls)
                 if down_urls:
-                    results = self._get_torrent(down_urls)
+                    urls = []
+                    # 过滤种子
+                    if ctx.enable_search_filter:
+                        to_filter_titles = [name for name in down_urls.keys()]
+                        filter_titles = SearchFilterHelper().do_filter(StringUtils.get_url_domain(self.spider_url),
+                                                                       keyword, to_filter_titles, ctx)
+                        urls = [down_urls[name] for name in down_urls.keys() if name in filter_titles]
+                    else:
+                        urls = [down_urls[name] for name in down_urls.keys()]
+                    if not urls:
+                        return []
+                    results = self._get_torrent(urls)
             logger.info(f"{self.spider_name}-搜索结果解析完成，共找到 {len(results)} 个种子")
             return results
         except Exception as e:
-            logger.error(f"{self.spider_name}-解析搜索结果失败: {str(e)}")
+            logger.error(f"{self.spider_name}-解析搜索结果失败: {str(e)} - {traceback.format_exc()}")
             return []
 
-    @retry(Exception, 5, 3, 2, logger=logger)
-    def _get_down_urls(self, detail_url: str, detail_page: Page) -> Optional[set]:
+    @retry(Exception, 2, 3, 2, logger=logger)
+    def _get_down_urls(self, detail_url: str, detail_page: Page, down_urls: dict) -> Dict[str, str]:
         # 使用线程池并发获取种子信息
         logger.info(f"{self.spider_name}-开始获取详情页: {detail_url}")
         self._wait()
@@ -116,30 +154,29 @@ class BtBtlSpider(_ExtendSpiderBase):
 
         content = detail_page.content()
         soup = BeautifulSoup(content, "html.parser")
-        a_tags = soup.select("div.module-downlist div.module-row-info a[title].btn-down")
+        a_tags = soup.select("div.module-downlist div.module-row-info a[title].module-row-text.copy")
 
         seen_titles = set()
         seen_links = set()
-        down_urls = set()
-
         for a_tag in a_tags:
             title = a_tag['title'].strip()
             if ".torrent" not in title:
                 continue
+            title.replace("下载量", "")
             link = a_tag['href'].strip()
             if not link.startswith("http"):
-                link = f"{self.spider_url}/{link}"
+                link = f"{self.spider_url}{link}"
             if title in seen_titles or link in seen_links:
                 logger.debug(f"{self.spider_name}-跳过重复项: {title} / {link}")
                 continue
             seen_titles.add(title)
             seen_links.add(link)
-            down_urls.add(link)
-        logger.info(f"{self.spider_name}-详情页解析完成，共找到 {len(down_urls)} 个下载链接")
+            down_urls[title] = link
+        logger.info(f"{self.spider_name}-详情页解析完成，共找到 {len(seen_links)} 个下载链接")
         return down_urls
 
     def _get_torrent(self, down_urls) -> Optional[list]:
-        results = set()
+        results = []
 
         # 将URL列表分成多个批次
         def chunk_list(lst, chunk_size):
@@ -148,12 +185,38 @@ class BtBtlSpider(_ExtendSpiderBase):
         def process_url_batch(url_batch, index):
             try:
                 with sync_playwright() as playwright:
-                    browser = playwright.chromium.launch(headless=True)
-                    context = browser.new_context(user_agent=settings.USER_AGENT,
-                                                  proxy=settings.PROXY_SERVER if self.spider_proxy else None)
+                    browser = playwright.chromium.launch(
+                        headless=True,
+                        args=[
+                            '--disable-blink-features=AutomationControlled',
+                            '--disable-features=IsolateOrigins,site-per-process',
+                            '--disable-site-isolation-trials',
+                            '--no-sandbox',
+                            '--disable-setuid-sandbox',
+                            '--disable-dev-shm-usage',
+                            '--disable-accelerated-2d-canvas',
+                            '--no-first-run',
+                            '--no-zygote',
+                            '--disable-gpu'
+                        ]
+                    )
+                    context = browser.new_context(
+                        user_agent=settings.USER_AGENT,
+                        proxy=settings.PROXY_SERVER if self.spider_proxy else None,
+                        viewport={'width': 1920, 'height': 1080},
+                        locale='zh-CN',
+                        timezone_id='Asia/Shanghai',
+                        device_scale_factor=1,
+                        has_touch=False,
+                        is_mobile=False,
+                        java_script_enabled=True,
+                        ignore_https_errors=True,
+                        permissions=['geolocation']
+                    )
                     if self.spider_cookie:
                         context.add_cookies(self.spider_cookie)
                     detail_page = context.new_page()
+                    stealth_sync(detail_page)
 
                     current_batch_results = []
                     try:
@@ -183,7 +246,7 @@ class BtBtlSpider(_ExtendSpiderBase):
         logger.info(f"{self.spider_name}-将 {len(down_urls)} 个下载页分成 {len(url_batches)} 个批次处理")
 
         # 使用线程池并发处理批次
-        with ThreadPoolExecutor(max_workers=min(4, len(url_batches))) as executor:
+        with ThreadPoolExecutor(max_workers=min(6, len(url_batches))) as executor:
             future_to_batch = {
                 executor.submit(process_url_batch, batch, idx + 1): (idx, batch)
                 for idx, batch in enumerate(url_batches)
@@ -193,26 +256,51 @@ class BtBtlSpider(_ExtendSpiderBase):
                 idx, batch = future_to_batch[future]
                 try:
                     batch_results = future.result()
-                    results.update(batch_results)
+                    results.extend(batch_results)
                     logger.info(
                         f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理完成，获取到 {len(batch_results)} 个种子")
                 except Exception as e:
                     logger.error(f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败: {str(e)}")
 
         logger.info(f"{self.spider_name}-所有批次处理完成，共获取到 {len(results)} 个种子")
-        return list(results)
+        return results
 
     def _parse_torrent(self, down_url: str, detail_page: Page = None) -> Tuple[bool, Optional[dict]]:
-        self._wait()  # 每个任务开始前等待
         try:
             if not detail_page:
                 with sync_playwright() as playwright:
-                    browser = playwright.chromium.launch(headless=True)
-                    context = browser.new_context(user_agent=settings.USER_AGENT,
-                                                  proxy=settings.PROXY_SERVER if self.spider_proxy else None)
+                    browser = playwright.chromium.launch(
+                        headless=True,
+                        args=[
+                            '--disable-blink-features=AutomationControlled',
+                            '--disable-features=IsolateOrigins,site-per-process',
+                            '--disable-site-isolation-trials',
+                            '--no-sandbox',
+                            '--disable-setuid-sandbox',
+                            '--disable-dev-shm-usage',
+                            '--disable-accelerated-2d-canvas',
+                            '--no-first-run',
+                            '--no-zygote',
+                            '--disable-gpu'
+                        ]
+                    )
+                    context = browser.new_context(
+                        user_agent=settings.USER_AGENT,
+                        proxy=settings.PROXY_SERVER if self.spider_proxy else None,
+                        viewport={'width': 1920, 'height': 1080},
+                        locale='zh-CN',
+                        timezone_id='Asia/Shanghai',
+                        device_scale_factor=1,
+                        has_touch=False,
+                        is_mobile=False,
+                        java_script_enabled=True,
+                        ignore_https_errors=True,
+                        permissions=['geolocation']
+                    )
                     if self.spider_cookie:
                         context.add_cookies(self.spider_cookie)
                     detail_page = context.new_page()
+                    stealth_sync(detail_page)
                     try:
                         return self._parse_torrent_content(down_url, detail_page)
                     finally:
@@ -276,8 +364,8 @@ class BtBtlSpider(_ExtendSpiderBase):
             "title": title,
             "enclosure": enclosure,
             "description": f"{title} | 大小: {size} | 时间: {publish_time} | Hash: {torrent_hash}",
-            "page_url": down_url,
-            "size": title_info.sie_num,
+            # "page_url": down_url, # 会下载字幕
+            "size": title_info.size_num,
             "pubdate": publish_time
         }
 
@@ -299,3 +387,8 @@ if __name__ == "__main__":
     # 使用直接请求
     rest = lou.search("藏海传", 1)
     print(rest)
+    title_info = SearchFilterHelper().parse_title(
+        "藏海传[第01-09集][国语配音+中文字幕].Legend.of.Zang.Hai.S01.2025.1080p.Viu.WEB-DL.H264.AAC-DeePTV")
+    size = StringUtils.num_filesize("2.4GB")
+    TorrentInfo(title="s", size=title_info.size_num)
+    print(size)

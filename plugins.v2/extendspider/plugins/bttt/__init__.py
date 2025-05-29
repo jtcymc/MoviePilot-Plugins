@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.helper.search_filter import SearchFilterHelper
 from app.plugins.extendspider.base import _ExtendSpiderBase
 from playwright.sync_api import sync_playwright, Page
+from playwright_stealth import stealth_sync
 
 from app.plugins.extendspider.utils.url import pass_cloudflare
 from app.schemas import SearchContext
@@ -15,26 +16,49 @@ from app.utils.common import retry
 
 
 class BtttSpider(_ExtendSpiderBase):
-    #  网站搜索接口Cookie
-    spider_cookie = []
 
     def __init__(self, config: dict = None):
         super(BtttSpider, self).__init__(config)
         self._result_lock = threading.Lock()
-        logger.info(f"初始化 {self.spider_name} 爬虫")
+        
 
     def init_spider(self, config: dict = None):
         self.spider_url = "https://www.bttt11.com"
         self.spider_search_url = f"{self.spider_url}/e/search"
-        self.spider_cookie = []
 
     def _do_search(self, keyword: str, page: int, ctx: SearchContext):
         try:
             with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(headless=True)
-                context = browser.new_context(user_agent=settings.USER_AGENT,
-                                              proxy=settings.PROXY_SERVER if self.spider_proxy else None)
+                browser = playwright.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-features=IsolateOrigins,site-per-process',
+                        '--disable-site-isolation-trials',
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-accelerated-2d-canvas',
+                        '--no-first-run',
+                        '--no-zygote',
+                        '--disable-gpu'
+                    ]
+                )
+                context = browser.new_context(
+                    user_agent=settings.USER_AGENT,
+                    proxy=settings.PROXY_SERVER if self.spider_proxy else None,
+                    viewport={'width': 1920, 'height': 1080},
+                    locale='zh-CN',
+                    timezone_id='Asia/Shanghai',
+                    device_scale_factor=1,
+                    has_touch=False,
+                    is_mobile=False,
+                    java_script_enabled=True,
+                    ignore_https_errors=True,
+                    permissions=['geolocation']
+                )
                 page = context.new_page()
+                stealth_sync(page)
 
                 try:
                     # 访问主页并处理 Cloudflare
@@ -116,12 +140,38 @@ class BtttSpider(_ExtendSpiderBase):
         def process_url_batch(url_batch, index):
             try:
                 with sync_playwright() as playwright:
-                    browser = playwright.chromium.launch(headless=True)
-                    context = browser.new_context(user_agent=settings.USER_AGENT,
-                                                proxy=settings.PROXY_SERVER if self.spider_proxy else None)
+                    browser = playwright.chromium.launch(
+                        headless=True,
+                        args=[
+                            '--disable-blink-features=AutomationControlled',
+                            '--disable-features=IsolateOrigins,site-per-process',
+                            '--disable-site-isolation-trials',
+                            '--no-sandbox',
+                            '--disable-setuid-sandbox',
+                            '--disable-dev-shm-usage',
+                            '--disable-accelerated-2d-canvas',
+                            '--no-first-run',
+                            '--no-zygote',
+                            '--disable-gpu'
+                        ]
+                    )
+                    context = browser.new_context(
+                        user_agent=settings.USER_AGENT,
+                        proxy=settings.PROXY_SERVER if self.spider_proxy else None,
+                        viewport={'width': 1920, 'height': 1080},
+                        locale='zh-CN',
+                        timezone_id='Asia/Shanghai',
+                        device_scale_factor=1,
+                        has_touch=False,
+                        is_mobile=False,
+                        java_script_enabled=True,
+                        ignore_https_errors=True,
+                        permissions=['geolocation']
+                    )
                     if self.spider_cookie:
                         context.add_cookies(self.spider_cookie)
                     detail_page = context.new_page()
+                    stealth_sync(detail_page)
 
                     current_batch_results = []
                     try:
@@ -199,8 +249,8 @@ class BtttSpider(_ExtendSpiderBase):
                     "title": title,
                     "enclosure": link,
                     "description": title,
-                    "page_url": detail_url,
-                    "size": title_info.sie_num
+                    # "page_url": detail_url, # 会下载字幕
+                    "size": title_info.size_num
                 })
                 logger.debug(f"{self.spider_name}-找到种子: {title}")
 

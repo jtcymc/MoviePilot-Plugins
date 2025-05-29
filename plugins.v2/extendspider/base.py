@@ -68,8 +68,6 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     #  批量搜索结果
     spider_batch_size = 6
 
-
-
     # UA
     spider_ua = ""
 
@@ -80,6 +78,9 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         self.spider_enable = config.get("spider_enable")
         self.spider_proxy = config.get("spider_proxy")
         self.spider_ua = config.get("spider_ua", settings.USER_AGENT)
+        self.spider_headers = {
+            "User-Agent": settings.USER_AGENT,
+        }
         self.init_spider(config)
         # 初始化限速器
         self._limiters[self.spider_name] = SiteRateLimiter(
@@ -128,6 +129,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         self.search_helper = SearchFilterHelper()
         # 初始化线程锁
         self._request_result_lock = threading.Lock()
+        logger.info(f"初始化 {self.spider_name} 爬虫")
 
     @abstractmethod
     def init_spider(self, config: dict = None):
@@ -146,7 +148,6 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
                 wait_time = random.uniform(self._min_interval, self._max_interval)
                 time.sleep(wait_time - elapsed)
             self._last_request_time = time.time()
-
 
     def _wait(self):
         """等待随机间隔时间"""
