@@ -11,7 +11,7 @@ from app.helper.search_filter import SearchFilterHelper
 from app.log import logger
 from app.modules.indexer.utils.proxy import ProxyFactory
 from app.schemas import SearchContext
-from app.sites import SiteRateLimiter
+from app.sites.site_limiter import SiteRateLimiter
 from app.utils.string import StringUtils
 import requests
 import asyncio

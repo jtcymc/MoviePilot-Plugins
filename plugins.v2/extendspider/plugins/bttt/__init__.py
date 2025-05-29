@@ -1,4 +1,3 @@
-from typing import Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
@@ -6,7 +5,7 @@ from bs4 import BeautifulSoup
 from app.log import logger
 from app.core.config import settings
 from app.helper.search_filter import SearchFilterHelper
-from app.plugins.extendspider.base import _ExtendSpiderBase
+from plugins.extendspider.plugins.base import _ExtendSpiderBase
 from playwright.sync_api import sync_playwright, Page
 from playwright_stealth import stealth_sync
 

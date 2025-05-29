@@ -1,18 +1,16 @@
-from typing import Tuple, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
 from bs4 import BeautifulSoup
 from app.log import logger
 from app.core.config import settings
-from app.plugins.extendspider.base import _ExtendSpiderBase
+from plugins.extendspider.plugins.base import _ExtendSpiderBase
 from app.plugins.extendspider.utils.url import pass_cloudflare, get_dn, format_episode_title
 from playwright.sync_api import sync_playwright, Page
 from playwright_stealth import stealth_sync
 from app.schemas import SearchContext
 from app.helper.search_filter import SearchFilterHelper
 from app.utils.common import retry
-import re
 
 
 class BtdxSpider(_ExtendSpiderBase):
