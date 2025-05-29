@@ -1,3 +1,7 @@
+from typing import Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+
 from bs4 import BeautifulSoup
 from app.log import logger
 from app.core.config import settings
@@ -6,20 +10,22 @@ from app.plugins.extendspider.base import _ExtendSpiderBase
 from app.plugins.extendspider.utils.url import get_dn, pass_cloudflare
 from playwright.sync_api import sync_playwright, Page
 from app.schemas import SearchContext
-from utils.common import retry
+from app.utils.common import retry
 
 
 class Dytt8899Spider(_ExtendSpiderBase):
     #  网站搜索接口Cookie
-    spider_cookie = ""
+    spider_cookie = []
 
     def __init__(self, config: dict = None):
         super(Dytt8899Spider, self).__init__(config)
+        self._result_lock = threading.Lock()
+        logger.info(f"初始化 {self.spider_name} 爬虫")
 
     def init_spider(self, config: dict = None):
         self.spider_url = "https://www.dytt8899.com"
         self.spider_search_url = f"{self.spider_url}/e/search/index.php"
-        self.spider_cookie = ""
+        self.spider_cookie = []
         self.spider_headers = {
             "User-Agent": settings.USER_AGENT,
         }
@@ -40,15 +46,16 @@ class Dytt8899Spider(_ExtendSpiderBase):
                         return []
 
                     # 等待页面加载完成
-                    page.wait_for_load_state("networkidle", timeout=30 * 1000)
+                    page.wait_for_load_state("domcontentloaded", timeout=30 * 1000)
                     logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
                     self._wait()
+                    self.spider_cookie = context.cookies()
 
                     # 执行搜索
                     page.goto(self.spider_search_url)
                     page.fill("div.searchl input[name='keyboard']", keyword)
                     page.click("div.searchr input[name='Submit'][value='立即搜索']")
-                    page.wait_for_load_state("networkidle", timeout=30 * 1000)
+                    page.wait_for_load_state("domcontentloaded", timeout=30 * 1000)
 
                     # 解析搜索结果
                     results = self._parse_search_result(page, ctx)
@@ -78,86 +85,152 @@ class Dytt8899Spider(_ExtendSpiderBase):
             tables = ul_div.select("ul  table")
             if not tables:
                 return []
-            detail_tag = tables[0]
-            detail_url = detail_tag.find('a').get('href')[1:]
-            if not detail_url.startswith("http"):
-                detail_url = f"{self.spider_url}/{detail_url}"
-            if not detail_url:
+            
+            detail_urls = set()
+            for table in tables:
+                detail_tag = table.find('a')
+                if not detail_tag:
+                    continue
+                detail_url = detail_tag.get('href', '')
+                if not detail_url:
+                    continue
+                if detail_url.startswith('/'):
+                    detail_url = detail_url[1:]
+                if not detail_url.startswith("http"):
+                    detail_url = f"{self.spider_url}/{detail_url}"
+                detail_urls.add(detail_url)
+            
+            if not detail_urls:
                 return []
+            
             # 获取种子信息
-            try:
-                self._wait()
-                logger.info(f"{self.spider_name}-开始获取 {detail_url} 详情页的种子信息")
-                torrents = self._get_torrent_info(page, detail_url, ctx)
-                logger.info(f"{self.spider_name}-成功获取详情页 {detail_url} 的种子信息: {len(torrents)} 个")
-                return torrents
-            except Exception as ex:
-                logger.error(f"{self.spider_name}-详情抓取失败: {detail_url}: {str(ex)}")
-                return []
+            logger.info(f"{self.spider_name}-开始获取 {len(detail_urls)} 个详情页的种子信息")
+            return self._parse_detail_results(detail_urls)
+
         except Exception as e:
             logger.error(f"{self.spider_name}-解析搜索结果失败: {str(e)}")
             return []
 
-    @retry(Exception, 5, 3, 2, logger=logger)
-    def _get_torrent_info(self, page: Page, detail_url: str, ctx: SearchContext) -> list:
-        try:
-            self._wait()
-            # 访问详情页
-            page.goto(detail_url)
-            page.wait_for_load_state("networkidle", timeout=30 * 1000)
-            logger.info(f"{self.spider_name}-访问详情页成功,开始获取种子信息...")
-            # 获取页面内容
-            content = page.content()
-            soup = BeautifulSoup(content, "html.parser")
-            downlist_div = soup.find("div", id="downlist")
-            if not downlist_div:
+    def _parse_detail_results(self, detail_urls) -> list:
+        """ 处理详情页 """
+        results = []
+        _processed_titles = set()
+
+        # 将URL列表分成多个批次
+        def chunk_list(lst, chunk_size):
+            return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+
+        def process_url_batch(url_batch, index):
+            try:
+                with sync_playwright() as playwright:
+                    browser = playwright.chromium.launch(headless=True)
+                    context = browser.new_context(user_agent=settings.USER_AGENT,
+                                                proxy=settings.PROXY_SERVER if self.spider_proxy else None)
+                    if self.spider_cookie:
+                        context.add_cookies(self.spider_cookie)
+                    detail_page = context.new_page()
+
+                    current_batch_results = []
+                    try:
+                        for url_idx, detail_url in enumerate(url_batch):
+                            self._wait()  # 每个URL处理前等待
+                            logger.info(
+                                f"{self.spider_name}-线程 {index} 正在处理第 {url_idx + 1}/{len(url_batch)} 个详情页: {detail_url}")
+
+                            torrents = self._get_torrent_info(detail_page, detail_url, None)
+                            if torrents:
+                                current_batch_results.extend(torrents)
+                                logger.info(
+                                    f"{self.spider_name}-线程 {index} 成功获取第 {url_idx + 1}/{len(url_batch)} 个详情页的种子信息: {len(torrents)} 个")
+                    finally:
+                        detail_page.close()
+                        context.close()
+                        browser.close()
+                    return current_batch_results
+            except Exception as ex:
+                logger.error(f"{self.spider_name}-线程 {index} 处理批次失败: {str(ex)}")
                 return []
 
-            results = []
-            tds = downlist_div.find_all("td", style=lambda value: value and "WORD-WRAP: break-word" in value)
-            for td in tds:
-                a_tags = td.find_all("a", href=lambda href: href and href.startswith("magnet:"))
-                if not a_tags:
-                    continue
-                for a_tag in a_tags:
-                    link = a_tag['href']
-                    if not link or link.startswith("thunder://"):
-                        continue
-                    title = a_tag.text.strip()
-                    # 判断是否是磁力链接
-                    if link.startswith('magnet:?'):
-                        enclosure = link
-                        title = get_dn(link)
-                        logger.debug(f"{self.spider_name}-找到磁力链接: {enclosure}")
-                    else:
-                        # 处理普通下载链接
-                        if link.startswith('http'):
-                            enclosure = link
-                        else:
-                            enclosure = f"{self.spider_url}/{link}"
-                        logger.debug(f"{self.spider_name}-找到下载链接: {enclosure}")
+        # 计算每个线程处理的URL数量
+        batch_size = max(1, len(detail_urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL
+        url_batches = chunk_list(list(detail_urls), batch_size)
 
-                    title_info = SearchFilterHelper().parse_title(title)
-                    if not title_info.episode:
-                        title_info.episode = SearchFilterHelper().get_episode(title)
-                    results.append({
-                        "title": title,
-                        "enclosure": enclosure,
-                        "description": title,
-                        "page_url": detail_url,
-                        "size": title_info.sie_num
-                    })
-                    logger.info(f"{self.spider_name}-找到种子: {title}")
+        logger.info(f"{self.spider_name}-将 {len(detail_urls)} 个详情页分成 {len(url_batches)} 个批次处理")
 
-            if not results:
-                logger.warn(f"{self.spider_name}-没有找到种子")
-            # 过滤信息
-            # self.get_link_size(results)
-            return results
+        # 使用线程池并发处理批次
+        with ThreadPoolExecutor(max_workers=min(4, len(url_batches))) as executor:
+            future_to_batch = {
+                executor.submit(process_url_batch, batch, idx + 1): (idx, batch)
+                for idx, batch in enumerate(url_batches)
+            }
 
-        except Exception as e:
-            logger.error(f"获取种子信息失败: {str(e)}")
+            for future in as_completed(future_to_batch):
+                idx, batch = future_to_batch[future]
+                try:
+                    batch_results = future.result()
+                    with self._result_lock:
+                        results.extend(batch_results)
+                        logger.info(
+                            f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理完成，获取到 {len(batch_results)} 个种子")
+                except Exception as e:
+                    logger.error(f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败: {str(e)}")
+
+        logger.info(f"{self.spider_name}-所有批次处理完成，共获取到 {len(results)} 个种子")
+        return results
+
+    @retry(Exception, 5, 3, 2, logger=logger)
+    def _get_torrent_info(self, page: Page, detail_url: str, ctx: SearchContext = None) -> list:
+        self._wait()
+        # 访问详情页
+        page.goto(detail_url)
+        page.wait_for_load_state("domcontentloaded", timeout=30 * 1000)
+        logger.info(f"{self.spider_name}-访问详情页成功,开始获取种子信息...")
+        # 获取页面内容
+        content = page.content()
+        soup = BeautifulSoup(content, "html.parser")
+        downlist_div = soup.find("div", id="downlist")
+        if not downlist_div:
             return []
+
+        results = []
+        tds = downlist_div.find_all("td", style=lambda value: value and "WORD-WRAP: break-word" in value)
+        for td in tds:
+            a_tags = td.find_all("a", href=lambda href: href and href.startswith("magnet:"))
+            if not a_tags:
+                continue
+            for a_tag in a_tags:
+                link = a_tag['href']
+                if not link or link.startswith("thunder://"):
+                    continue
+                title = a_tag.text.strip()
+                # 判断是否是磁力链接
+                if link.startswith('magnet:?'):
+                    enclosure = link
+                    title = get_dn(link)
+                    logger.debug(f"{self.spider_name}-找到磁力链接: {enclosure}")
+                else:
+                    # 处理普通下载链接
+                    if link.startswith('http'):
+                        enclosure = link
+                    else:
+                        enclosure = f"{self.spider_url}/{link}"
+                    logger.debug(f"{self.spider_name}-找到下载链接: {enclosure}")
+
+                title_info = SearchFilterHelper().parse_title(title)
+                if not title_info.episode:
+                    title_info.episode = SearchFilterHelper().get_episode(title)
+                results.append({
+                    "title": title,
+                    "enclosure": enclosure,
+                    "description": title,
+                    "page_url": detail_url,
+                    "size": title_info.sie_num
+                })
+                logger.info(f"{self.spider_name}-找到种子: {title}")
+
+        if not results:
+            logger.warn(f"{self.spider_name}-没有找到种子")
+        return results
 
 
 if __name__ == "__main__":

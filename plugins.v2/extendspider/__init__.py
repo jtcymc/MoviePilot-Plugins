@@ -4,8 +4,8 @@ from typing import List, Dict, Any, Tuple, Optional
 
 from app.plugins import _PluginBase
 from app.log import logger
+from schemas import SearchContext
 from .utils.spinder_helper import SpiderHelper
-
 
 spider_configs = \
     {
@@ -15,30 +15,37 @@ spider_configs = \
                          'spider_desc': 'BT之家1LOU站-回归初心，追求极简',
                          'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                          },
+        "BtBtlSpider": {'spider_name': 'BtBtlSpider',
+                        'spider_enable': True,
+                        'spider_proxy': True,
+                        'spider_desc': 'BT影视_4k高清电影BT下载_蓝光迅雷电影下载_最新电视剧下载',
+                        'plugin_name': 'ExtendSpider'  # 必须和插件名一致
+                        },
         "BtBuLuoSpider": {'spider_name': 'BtBuLuoSpider',
                           'spider_enable': True,
                           'spider_proxy': True,
                           'spider_desc': 'BT部落天堂 - 注重体验与质量的影视资源下载网站',
                           'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                           },
-        "Dytt8899Spider": {'spider_name': 'Dytt8899Spider',
-                           'spider_enable': False,
-                           'spider_proxy': False,
-                           'spider_desc': '电影天堂_电影下载_高清首发',
-                           'plugin_name': 'ExtendSpider'  # 必须和插件名一致
-                           },
+
         "BtdxSpider": {'spider_name': 'BtdxSpider',
                        'spider_enable': False,
                        'spider_proxy': True,
                        'spider_desc': '比特大雄_BT电影天堂_最新720P、1080P高清电影BT种子免注册下载网站',
                        'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                        },
-        "BtBtlSpider": {'spider_name': 'BtBtlSpider',
-                        'spider_enable': True,
-                        'spider_proxy': True,
-                        'spider_desc': 'BT影视_4k高清电影BT下载_蓝光迅雷电影下载_最新电视剧下载',
-                        'plugin_name': 'ExtendSpider'  # 必须和插件名一致
-                        }
+        "BtttSpider": {'spider_name': 'BtttSpider',
+                       'spider_enable': False,
+                       'spider_proxy': True,
+                       'spider_desc': 'BT天堂 - 2025最新高清电影1080P|2160P|4K资源免费下载',
+                       'plugin_name': 'ExtendSpider'  # 必须和插件名一致
+                       },
+        "Dytt8899Spider": {'spider_name': 'Dytt8899Spider',
+                           'spider_enable': False,
+                           'spider_proxy': False,
+                           'spider_desc': '电影天堂_电影下载_高清首发',
+                           'plugin_name': 'ExtendSpider'  # 必须和插件名一致
+                           },
     }
 
 
@@ -166,7 +173,7 @@ class ExtendSpider(_PluginBase):
             indexers.extend(spider.get_indexers())
         return indexers
 
-    def search(self, indexer, keyword, page, context_id: Optional[str] = None):
+    def search(self, indexer, keyword, page, search_context: Optional[SearchContext] = None):
         """
         根据关键字多线程检索
         """
@@ -174,7 +181,7 @@ class ExtendSpider(_PluginBase):
             return None
         s_name = indexer.get("id", "").split('-')[1]
         logger.info(f"【{self.plugin_name}】开始检索Indexer：{s_name} ...")
-        ret = self._spider_helper.search(s_name, keyword, page, context_id=context_id)
+        ret = self._spider_helper.search(s_name, keyword, page, search_context=search_context)
         logger.info(f"【{self.plugin_name}】检索Indexer：{s_name} 返回资源数：{len(ret)}")
         return ret
 
@@ -404,4 +411,3 @@ class ExtendSpider(_PluginBase):
             拼装插件详情页面，需要返回页面配置，同时附带数据
         """
         pass
-

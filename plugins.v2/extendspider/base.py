@@ -14,7 +14,9 @@ from app.schemas import SearchContext
 from app.sites import SiteRateLimiter
 from app.utils.string import StringUtils
 import requests
-
+import asyncio
+import sys
+import os
 from plugins.extendspider.utils.url import get_magnet_info_from_url
 
 
@@ -44,7 +46,6 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     spider_ratelimit = True
     # 爬虫插件名称
     _plugin_name = "PluginSpider"
-
     _limiters = {}
     # 代理实例
     spider_proxy_client = None  # 请求间隔时间范围（秒）
@@ -52,19 +53,22 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     spider_request_interval = (0.6, 1.8)  # 最小2秒，最大5秒
     # 爬虫网站连通
     spider_web_status = True
-
     #  请求头
     spider_headers = {}
+    #  cookie
+    spider_cookie = []
     #  网站搜索接口
     spider_search_url = ""
-
     #  是否支持浏览
     support_browse = False
-
     # 是否支持imdb_id
     support_imdb_id = False
-
+    #  搜索结果锁
     _request_result_lock = None
+    #  批量搜索结果
+    spider_batch_size = 6
+
+
 
     # UA
     spider_ua = ""
@@ -96,6 +100,12 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
                 "type": "playwright",
                 "config": proxy_config
             }
+            # 设置事件循环策略
+            if sys.platform == 'win32':
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+                # 设置环境变量
+                os.environ["PYTHONASYNCIODEBUG"] = "0"
+                os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
         else:
             if self.spider_proxy:
                 # 初始化代理
@@ -243,24 +253,21 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
             return False, f"测试过程发生异常: {str(e)}"
 
     # @cached(cache=TTLCache(maxsize=200, ttl=2 * 3600), key=lambda self, keyword, page: (id(self), keyword, page))
-    def search(self, keyword: str, page: int, context_id: Optional[str] = None):
+    def search(self, keyword: str, page: int, search_context: Optional[SearchContext] = None):
         """
         搜索资源，支持限速控制。
         :param keyword: 搜索关键词
         :param page: 分页页码
-        :param context_id: 上下文id
+        :param search_context:  搜索上下文
         :return: 匹配的种子资源列表
         """
-        context = self.search_helper.get_search_context(context_id)
-        if not context:
-            context = SearchContext(context_id=context_id)
-        state, result = self._pre_search_check(keyword, context=context)
+        state, result = self._pre_search_check(keyword, context=search_context)
         if not state:
             return result
         logger.info(f"{self.spider_name}-开始搜索 检索词: {keyword} ")
         new_page = page if page > 1 else 1
 
-        return self._do_search(keyword, page=new_page, ctx=context)
+        return self._do_search(keyword, page=new_page, ctx=search_context)
 
     def _pre_search_check(self, keyword: str, context: SearchContext) -> Tuple[bool, list]:
         """
@@ -285,6 +292,8 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         if not keyword:
             logger.warning("搜索关键词为空")
             return False, []
+        if not context:
+            context = SearchContext()
         # 校验是否是imdbid搜索
         if context.area == "imdbid" and self.support_imdb_id:
             logger.info(f"{self.spider_name}-开始通过imdb_id搜索 imdb_id: {keyword} ")

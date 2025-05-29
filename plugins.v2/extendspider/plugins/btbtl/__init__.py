@@ -10,23 +10,19 @@ from playwright.sync_api import sync_playwright, Page
 from app.schemas import SearchContext
 
 from app.helper.search_filter import SearchFilterHelper
-from utils.common import retry
+from app.utils.common import retry
 
 
 class BtBtlSpider(_ExtendSpiderBase):
-    #  网站搜索接口Cookie
-    spider_cookie = ""
 
     def __init__(self, config: dict = None):
         super(BtBtlSpider, self).__init__(config)
-        #  最大详情页链接数
-        self.max_detail_urls = 5
+
         logger.info(f"初始化 {self.spider_name} 爬虫")
 
     def init_spider(self, config: dict = None):
         self.spider_url = "https://www.btbtl.com"
         self.spider_search_url = f"{self.spider_url}/search/$key$"
-        self.spider_cookie = ""
         self.spider_headers = {
             "User-Agent": settings.USER_AGENT,
         }
@@ -55,12 +51,11 @@ class BtBtlSpider(_ExtendSpiderBase):
                     if not pass_cloudflare(self.spider_url, browser_page):
                         logger.warn("cloudflare challenge fail！")
                         return []
-
                     # 等待页面加载完成
                     browser_page.wait_for_load_state("networkidle", timeout=15 * 1000)
                     logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
                     self._wait()
-
+                    self.spider_cookie = context.cookies()
                     # 执行搜索
                     browser_page.fill("#txtKeywords", keyword)
                     browser_page.click("button[type='submit'].search-go")
@@ -110,6 +105,7 @@ class BtBtlSpider(_ExtendSpiderBase):
         except Exception as e:
             logger.error(f"{self.spider_name}-解析搜索结果失败: {str(e)}")
             return []
+
     @retry(Exception, 5, 3, 2, logger=logger)
     def _get_down_urls(self, detail_url: str, detail_page: Page) -> Optional[set]:
         # 使用线程池并发获取种子信息
@@ -144,86 +140,149 @@ class BtBtlSpider(_ExtendSpiderBase):
 
     def _get_torrent(self, down_urls) -> Optional[list]:
         results = set()
-        with ThreadPoolExecutor(max_workers=min(4, len(down_urls))) as executor:
-            futures = [executor.submit(self._parse_torrent, url) for url in down_urls]
-            for future in as_completed(futures):
-                state, data = future.result()
-                if state:
-                    results.add(data)
+
+        # 将URL列表分成多个批次
+        def chunk_list(lst, chunk_size):
+            return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+
+        def process_url_batch(url_batch, index):
+            try:
+                with sync_playwright() as playwright:
+                    browser = playwright.chromium.launch(headless=True)
+                    context = browser.new_context(user_agent=settings.USER_AGENT,
+                                                  proxy=settings.PROXY_SERVER if self.spider_proxy else None)
+                    if self.spider_cookie:
+                        context.add_cookies(self.spider_cookie)
+                    detail_page = context.new_page()
+
+                    current_batch_results = []
+                    try:
+                        for url_idx, down_url in enumerate(url_batch):
+                            self._wait()  # 每个URL处理前等待
+                            logger.info(
+                                f"{self.spider_name}-线程 {index} 正在处理第 {url_idx + 1}/{len(url_batch)} 个下载页: {down_url}")
+
+                            state, data = self._parse_torrent(down_url, detail_page)
+                            if state and data:
+                                current_batch_results.append(data)
+                                logger.info(
+                                    f"{self.spider_name}-线程 {index} 成功获取第 {url_idx + 1}/{len(url_batch)} 个下载页的种子信息")
+                    finally:
+                        detail_page.close()
+                        context.close()
+                        browser.close()
+                    return current_batch_results
+            except Exception as ex:
+                logger.error(f"{self.spider_name}-线程 {index} 处理批次失败: {str(ex)}")
+                return []
+
+        # 计算每个线程处理的URL数量
+        batch_size = max(1, len(down_urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL
+        url_batches = chunk_list(list(down_urls), batch_size)
+
+        logger.info(f"{self.spider_name}-将 {len(down_urls)} 个下载页分成 {len(url_batches)} 个批次处理")
+
+        # 使用线程池并发处理批次
+        with ThreadPoolExecutor(max_workers=min(4, len(url_batches))) as executor:
+            future_to_batch = {
+                executor.submit(process_url_batch, batch, idx + 1): (idx, batch)
+                for idx, batch in enumerate(url_batches)
+            }
+
+            for future in as_completed(future_to_batch):
+                idx, batch = future_to_batch[future]
+                try:
+                    batch_results = future.result()
+                    results.update(batch_results)
+                    logger.info(
+                        f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理完成，获取到 {len(batch_results)} 个种子")
+                except Exception as e:
+                    logger.error(f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败: {str(e)}")
+
+        logger.info(f"{self.spider_name}-所有批次处理完成，共获取到 {len(results)} 个种子")
         return list(results)
 
-    def _parse_torrent(self, down_url: str) -> Tuple[bool, Optional[dict]]:
+    def _parse_torrent(self, down_url: str, detail_page: Page = None) -> Tuple[bool, Optional[dict]]:
         self._wait()  # 每个任务开始前等待
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
-            context = browser.new_context(user_agent=settings.USER_AGENT,
-                                          proxy=settings.PROXY_SERVER if self.spider_proxy else None)
-            detail_page = context.new_page()
-            try:
-                logger.info(f"{self.spider_name}-解析下载页: {down_url}")
-                self._wait()
-                detail_page.goto(down_url)
-                detail_page.wait_for_load_state("networkidle", timeout=30 * 1000)
+        try:
+            if not detail_page:
+                with sync_playwright() as playwright:
+                    browser = playwright.chromium.launch(headless=True)
+                    context = browser.new_context(user_agent=settings.USER_AGENT,
+                                                  proxy=settings.PROXY_SERVER if self.spider_proxy else None)
+                    if self.spider_cookie:
+                        context.add_cookies(self.spider_cookie)
+                    detail_page = context.new_page()
+                    try:
+                        return self._parse_torrent_content(down_url, detail_page)
+                    finally:
+                        detail_page.close()
+                        context.close()
+                        browser.close()
+            else:
+                return self._parse_torrent_content(down_url, detail_page)
+        except Exception as e:
+            logger.error(f"{self.spider_name}-解析下载链接失败: {str(e)}", exc_info=True)
+            return False, None
 
-                content = detail_page.content()
-                soup = BeautifulSoup(content, "html.parser")
-                info_main = soup.select_one("div.box.view-heading.tinfo div.video-info-main")
-                if not info_main:
-                    logger.warning(f"{self.spider_name}-找不到视频信息块")
-                    return False, None
+    def _parse_torrent_content(self, down_url: str, detail_page: Page) -> Tuple[bool, Optional[dict]]:
+        logger.info(f"{self.spider_name}-解析下载页: {down_url}")
+        self._wait()
+        detail_page.goto(down_url)
+        detail_page.wait_for_load_state("networkidle", timeout=30 * 1000)
 
-                title = info_main.select_one("span.video-info-itemtitle + div.video-info-item")
-                title = title.get_text(strip=True) if title else ""
-                title = title[1:] if title.startswith("/") else title
+        content = detail_page.content()
+        soup = BeautifulSoup(content, "html.parser")
+        info_main = soup.select_one("div.box.view-heading.tinfo div.video-info-main")
+        if not info_main:
+            logger.warning(f"{self.spider_name}-找不到视频信息块")
+            return False, None
 
-                torrent_hash = info_main.select_one(
-                    "span.video-info-itemtitle:-soup-contains('Hash:') + div.video-info-item")
-                torrent_hash = torrent_hash.get_text(strip=True) if torrent_hash else ""
+        title = info_main.select_one("span.video-info-itemtitle + div.video-info-item")
+        title = title.get_text(strip=True) if title else ""
+        title = title[1:] if title.startswith("/") else title
 
-                size = info_main.select_one(
-                    "span.video-info-itemtitle:-soup-contains('影片大小:') + div.video-info-item")
-                size = size.get_text(strip=True) if size else "0"
+        torrent_hash = info_main.select_one(
+            "span.video-info-itemtitle:-soup-contains('Hash:') + div.video-info-item")
+        torrent_hash = torrent_hash.get_text(strip=True) if torrent_hash else ""
 
-                publish_time = info_main.select_one(
-                    "span.video-info-itemtitle:-soup-contains('种子时间:') + div.video-info-item")
-                publish_time = publish_time.get_text(strip=True) if publish_time else ""
+        size = info_main.select_one(
+            "span.video-info-itemtitle:-soup-contains('影片大小:') + div.video-info-item")
+        size = size.get_text(strip=True) if size else "0"
 
-                enclosure = ""
-                magnet = soup.select_one("div.video-info-footer.display a[href]:not([target='_blank'])")
-                if magnet and magnet['href'].startswith('magnet:?'):
-                    enclosure = magnet['href'].strip()
-                else:
-                    for a in soup.select("div.video-info-footer.display a[href][target='_blank']"):
-                        href = a['href'].strip()
-                        enclosure = href if href.startswith("http") else f"{self.spider_url}{href}"
-                        break
+        publish_time = info_main.select_one(
+            "span.video-info-itemtitle:-soup-contains('种子时间:') + div.video-info-item")
+        publish_time = publish_time.get_text(strip=True) if publish_time else ""
 
-                if not enclosure:
-                    logger.warning(f"{self.spider_name}-未获取到有效下载链接")
-                    return False, None
+        enclosure = ""
+        magnet = soup.select_one("div.video-info-footer.display a[href]:not([target='_blank'])")
+        if magnet and magnet['href'].startswith('magnet:?'):
+            enclosure = magnet['href'].strip()
+        else:
+            for a in soup.select("div.video-info-footer.display a[href][target='_blank']"):
+                href = a['href'].strip()
+                enclosure = href if href.startswith("http") else f"{self.spider_url}{href}"
+                break
 
-                title_info = SearchFilterHelper().parse_title(title)
-                if not title_info.episode:
-                    title_info.episode = SearchFilterHelper().get_episode(title)
+        if not enclosure:
+            logger.warning(f"{self.spider_name}-未获取到有效下载链接")
+            return False, None
 
-                result = {
-                    "title": title,
-                    "enclosure": enclosure,
-                    "description": f"{title} | 大小: {size} | 时间: {publish_time} | Hash: {torrent_hash}",
-                    "page_url": down_url,
-                    "size": title_info.sie_num,
-                    "pubdate": publish_time
-                }
+        title_info = SearchFilterHelper().parse_title(title)
+        if not title_info.episode:
+            title_info.episode = SearchFilterHelper().get_episode(title)
 
-                logger.info(f"{self.spider_name}-成功解析: {title}")
-                return True, result
-            except Exception as e:
-                logger.error(f"{self.spider_name}-解析下载链接失败: {str(e)}", exc_info=True)
-            finally:
-                detail_page.close()
-                browser.close()
-                context.close()
-        return False, None
+        result = {
+            "title": title,
+            "enclosure": enclosure,
+            "description": f"{title} | 大小: {size} | 时间: {publish_time} | Hash: {torrent_hash}",
+            "page_url": down_url,
+            "size": title_info.sie_num,
+            "pubdate": publish_time
+        }
+
+        logger.info(f"{self.spider_name}-成功解析: {title}")
+        return True, result
 
 
 if __name__ == "__main__":

@@ -1,4 +1,7 @@
 from typing import Tuple, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+
 from bs4 import BeautifulSoup
 from app.log import logger
 from app.core.config import settings
@@ -17,12 +20,12 @@ class BtdxSpider(_ExtendSpiderBase):
 
     def __init__(self, config: dict = None):
         super(BtdxSpider, self).__init__(config)
+        self._result_lock = threading.Lock()
         logger.info(f"初始化 {self.spider_name} 爬虫")
 
     def init_spider(self, config: dict = None):
         self.spider_url = "https://www.btdx8.vip"
         self.spider_search_url = f"{self.spider_url}/?s=$key$"
-        self.spider_cookie = ""
         self.spider_headers = {
             "User-Agent": settings.USER_AGENT,
         }
@@ -55,6 +58,7 @@ class BtdxSpider(_ExtendSpiderBase):
                     browser_page.wait_for_load_state("networkidle", timeout=30 * 1000)
                     logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
                     self._wait()
+                    self.spider_cookie = context.cookies()
 
                     # 执行搜索
                     search_url = self.get_search_url(keyword, page)
@@ -81,25 +85,98 @@ class BtdxSpider(_ExtendSpiderBase):
             # 获取页面内容
             content = page.content()
             soup = BeautifulSoup(content, "html.parser")
-            detail_tag = soup.select_one("div.post-grid  div.post a.entry-thumb")
+            detail_tags = soup.select("div.post-grid div.post a.entry-thumb")
             # 判断是否有搜索结果 若是没有返回的页面直接是详情页
-            if not detail_tag:
+            if not detail_tags:
                 return self._parse_torrent(soup, page.url)
-            detail_url = detail_tag['href'].strip()
-            if not detail_url.startswith("http"):
-                detail_url = f"{self.spider_url}/{detail_url}"
-            if not detail_url:
+            
+            detail_urls = set()
+            for detail_tag in detail_tags:
+                detail_url = detail_tag['href'].strip()
+                if not detail_url.startswith("http"):
+                    detail_url = f"{self.spider_url}/{detail_url}"
+                detail_urls.add(detail_url)
+            
+            if not detail_urls:
                 return []
+            
             # 获取种子信息
-            logger.info(f"{self.spider_name}-开始获取 {detail_url} 详情页的种子信息")
-            torrents = self._get_torrent_info(page, detail_url, ctx)
-            return torrents
+            logger.info(f"{self.spider_name}-开始获取 {len(detail_urls)} 个详情页的种子信息")
+            return self._parse_detail_results(detail_urls)
+
         except Exception as e:
             logger.error(f"{self.spider_name}-解析搜索结果失败: {str(e)}")
             return []
 
+    def _parse_detail_results(self, detail_urls) -> list:
+        """ 处理详情页 """
+        results = []
+        _processed_titles = set()
+
+        # 将URL列表分成多个批次
+        def chunk_list(lst, chunk_size):
+            return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+
+        def process_url_batch(url_batch, index):
+            try:
+                with sync_playwright() as playwright:
+                    browser = playwright.chromium.launch(headless=True)
+                    context = browser.new_context(user_agent=settings.USER_AGENT,
+                                                proxy=settings.PROXY_SERVER if self.spider_proxy else None)
+                    if self.spider_cookie:
+                        context.add_cookies(self.spider_cookie)
+                    detail_page = context.new_page()
+
+                    current_batch_results = []
+                    try:
+                        for url_idx, detail_url in enumerate(url_batch):
+                            self._wait()  # 每个URL处理前等待
+                            logger.info(
+                                f"{self.spider_name}-线程 {index} 正在处理第 {url_idx + 1}/{len(url_batch)} 个详情页: {detail_url}")
+
+                            torrents = self._get_torrent_info(detail_page, detail_url, None)
+                            if torrents:
+                                current_batch_results.extend(torrents)
+                                logger.info(
+                                    f"{self.spider_name}-线程 {index} 成功获取第 {url_idx + 1}/{len(url_batch)} 个详情页的种子信息: {len(torrents)} 个")
+                    finally:
+                        detail_page.close()
+                        context.close()
+                        browser.close()
+                    return current_batch_results
+            except Exception as ex:
+                logger.error(f"{self.spider_name}-线程 {index} 处理批次失败: {str(ex)}")
+                return []
+
+        # 计算每个线程处理的URL数量
+        batch_size = max(1, len(detail_urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL
+        url_batches = chunk_list(list(detail_urls), batch_size)
+
+        logger.info(f"{self.spider_name}-将 {len(detail_urls)} 个详情页分成 {len(url_batches)} 个批次处理")
+
+        # 使用线程池并发处理批次
+        with ThreadPoolExecutor(max_workers=min(4, len(url_batches))) as executor:
+            future_to_batch = {
+                executor.submit(process_url_batch, batch, idx + 1): (idx, batch)
+                for idx, batch in enumerate(url_batches)
+            }
+
+            for future in as_completed(future_to_batch):
+                idx, batch = future_to_batch[future]
+                try:
+                    batch_results = future.result()
+                    with self._result_lock:
+                        results.extend(batch_results)
+                        logger.info(
+                            f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理完成，获取到 {len(batch_results)} 个种子")
+                except Exception as e:
+                    logger.error(f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败: {str(e)}")
+
+        logger.info(f"{self.spider_name}-所有批次处理完成，共获取到 {len(results)} 个种子")
+        return results
+
     @retry(Exception, 5, 3, 2, logger=logger)
-    def _get_torrent_info(self, page: Page, detail_url: str, ctx: SearchContext) -> list:
+    def _get_torrent_info(self, page: Page, detail_url: str, ctx: SearchContext = None) -> list:
         try:
             self._wait()
             # 访问详情页
@@ -157,7 +234,7 @@ class BtdxSpider(_ExtendSpiderBase):
             logger.info(f"{self.spider_name}-找到种子: {title}")
 
         # 过滤信息
-        self.get_link_size(results)
+        # self.get_link_size(results)
         if not results:
             logger.warn(f"{self.spider_name}-没有找到种子")
         return results
