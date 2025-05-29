@@ -15,17 +15,14 @@ from app.utils.common import retry
 
 
 class Bt1louSpider(_ExtendSpiderBase):
-    #  网站搜索接口Cookie
-    spider_cookie = ""
-
 
     def __init__(self, config: dict = None):
         super(Bt1louSpider, self).__init__(config)
-        self._result_lock = None
+        self._result_lock = threading.Lock()
         logger.info(f"初始化 {self.spider_name} 爬虫")
         # 初始化线程锁
         self._torrent_lock = threading.Lock()
-        self.spider_max_load_page = 3
+        self.spider_max_load_page = 2
 
     def init_spider(self, config: dict = None):
         self.spider_url = "https://www.1lou.me"
@@ -33,7 +30,7 @@ class Bt1louSpider(_ExtendSpiderBase):
             "User-Agent": settings.USER_AGENT,
         }
         self.spider_search_url = f"{self.spider_url}/search-$key$-$page$.htm"
-        self.spider_cookie = ""
+        self.spider_cookie = []
 
     def _get_page(self, page: int) -> str:
         if page <= self.spider_page_start:
@@ -54,9 +51,14 @@ class Bt1louSpider(_ExtendSpiderBase):
         results = []
         try:
             with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(headless=True)
-                context = browser.new_context(user_agent=settings.USER_AGENT,
-                                              proxy=settings.PROXY_SERVER if self.spider_proxy else None)
+                browser = playwright.chromium.launch(
+                    headless=True,
+                    # args=['--no-sandbox', '--disable-setuid-sandbox']
+                )
+                context = browser.new_context(
+                    user_agent=settings.USER_AGENT,
+                    proxy=settings.PROXY_SERVER if self.spider_proxy else None
+                )
                 browser_page = context.new_page()
 
                 try:
@@ -65,12 +67,11 @@ class Bt1louSpider(_ExtendSpiderBase):
                     if not pass_cloudflare(self.spider_url, browser_page):
                         logger.warn("cloudflare challenge fail！")
                         return []
-
                     # 等待页面加载完成
                     browser_page.wait_for_load_state("networkidle", timeout=30 * 1000)
                     logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
                     self._wait()
-
+                    self.spider_cookie = context.cookies()
                     # 如果起始页大于1，只抓取指定页
                     if page > self.spider_page_start:
                         logger.info(
@@ -97,7 +98,7 @@ class Bt1louSpider(_ExtendSpiderBase):
                     browser.close()
 
         except Exception as e:
-            logger.error(f"Playwright 初始化失败: {str(e)}")
+            logger.error(f"Playwright 初始化失败: {str(e)} - {traceback.format_exc()}")
             return []
 
     @staticmethod
@@ -169,6 +170,7 @@ class Bt1louSpider(_ExtendSpiderBase):
                 # 抓取后续页面
                 for current_page in range(2, pages_to_fetch + 1):
                     try:
+                        self._wait()
                         search_url = self.get_search_url(keyword, current_page)
                         logger.info(f"{self.spider_name}-正在抓取第 {current_page} 页: {search_url}")
                         browser_page.goto(search_url)
@@ -218,54 +220,67 @@ class Bt1louSpider(_ExtendSpiderBase):
         results = []
         _processed_torrent_titles = set()
 
-        def fetch_detail(detail_url_str, index):
+        # 将URL列表分成多个批次
+        def chunk_list(lst, chunk_size):
+            return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+
+        def process_url_batch(url_batch, index):
             try:
                 with sync_playwright() as playwright:
-                    self._wait()  # 每个任务开始前等待
                     browser = playwright.chromium.launch(headless=True)
                     context = browser.new_context(user_agent=settings.USER_AGENT,
                                                   proxy=settings.PROXY_SERVER if self.spider_proxy else None)
+                    context.add_cookies(self.spider_cookie)
                     detail_page = context.new_page()
+
+                    current_batch_results = []
                     try:
-                        logger.info(
-                            f"{self.spider_name}-开始处理第 {index}/{len(detail_urls)} 个详情页: {detail_url_str}")
-                        state, torrent_list = self._get_torrent_info(
-                            _processed_torrent_titles, detail_url_str, detail_page
-                        )
-                        if state:
+                        for url_idx, detail_url in enumerate(url_batch):
+                            self._wait()  # 每个URL处理前等待
                             logger.info(
-                                f"{self.spider_name}-成功获取第 {index}/{len(detail_urls)} 个详情页 {detail_url_str} 的种子信息: {len(torrent_list)} 个")
-                        return torrent_list if state else []
+                                f"{self.spider_name}-线程 {index} 正在处理第 {url_idx + 1}/{len(url_batch)} 个详情页: {detail_url}")
+
+                            state, torrent_list = self._get_torrent_info(
+                                _processed_torrent_titles, detail_url, detail_page
+                            )
+                            if state:
+                                current_batch_results.extend(torrent_list)
+                                logger.info(
+                                    f"{self.spider_name}-线程 {index} 成功获取第 {url_idx + 1}/{len(url_batch)} 个详情页的种子信息: {len(torrent_list)} 个")
                     finally:
                         detail_page.close()
                         context.close()
                         browser.close()
+                    return current_batch_results
             except Exception as ex:
-                logger.error(
-                    f"{self.spider_name}-第 {index}/{len(detail_urls)} 个详情页抓取失败: {detail_url_str}: {str(ex)}")
-            return []
+                logger.error(f"{self.spider_name}-线程 {index} 处理批次失败: {str(ex)}")
+                return []
 
-        # 使用线程池并发获取种子信息
-        logger.info(f"{self.spider_name}-开始并发获取 {len(detail_urls)} 个详情页的种子信息")
-        with ThreadPoolExecutor(max_workers=min(4, len(detail_urls))) as executor:
-            future_to_url = {
-                executor.submit(fetch_detail, detail_url_s, idx + 1): (idx, detail_url_s)
-                for idx, (detail_url_s) in enumerate(detail_urls)
+        # 计算每个线程处理的URL数量
+        batch_size = max(1, len(detail_urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL
+        url_batches = chunk_list(list(detail_urls), batch_size)
+
+        logger.info(f"{self.spider_name}-将 {len(detail_urls)} 个详情页分成 {len(url_batches)} 个批次处理")
+
+        # 使用线程池并发处理批次
+        with ThreadPoolExecutor(max_workers=min(4, len(url_batches))) as executor:
+            future_to_batch = {
+                executor.submit(process_url_batch, batch, idx + 1): (idx, batch)
+                for idx, batch in enumerate(url_batches)
             }
 
-            for future in as_completed(future_to_url):
-                idx, detail_url_s = future_to_url[future]
+            for future in as_completed(future_to_batch):
+                idx, batch = future_to_batch[future]
                 try:
-                    torrents = future.result()
+                    batch_results = future.result()
                     with self._result_lock:
-                        results.extend(torrents)
+                        results.extend(batch_results)
                         logger.info(
-                            f"{self.spider_name}-第 {idx + 1}/{len(detail_urls)} 个详情页处理完成，获取到 {len(torrents)} 个种子")
+                            f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理完成，获取到 {len(batch_results)} 个种子")
                 except Exception as e:
-                    logger.error(
-                        f"{self.spider_name}-第 {idx + 1}/{len(detail_urls)} 个详情页处理失败: {str(e)}")
+                    logger.error(f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败: {str(e)}")
 
-        logger.info(f"{self.spider_name}-本页共处理 {len(detail_urls)} 个详情页，获取到 {len(results)} 个种子")
+        logger.info(f"{self.spider_name}-所有批次处理完成，共获取到 {len(results)} 个种子")
         return results
 
     @retry(Exception, 3, 2, 2, logger=logger)
@@ -276,6 +291,10 @@ class Bt1louSpider(_ExtendSpiderBase):
 
         self._wait()
         logger.debug(f"{self.spider_name}-正在请求详情页: {detail_url}")
+        # if not pass_cloudflare(self.spider_url, page):
+        #     logger.warn("cloudflare challenge fail！")
+        #     return False, []
+        # self._wait()
         page.goto(detail_url)
         page.wait_for_load_state("networkidle", timeout=10 * 1000)  # 增加超时时间到15秒
 
@@ -321,8 +340,6 @@ class Bt1louSpider(_ExtendSpiderBase):
             })
             logger.info(f"{self.spider_name}-找到种子: {title}")
         return True, results
-
-
 
 
 if __name__ == "__main__":

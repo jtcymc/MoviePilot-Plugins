@@ -5,7 +5,7 @@ from urllib.parse import unquote, parse_qs, urlparse
 
 import requests
 
-from core.config import settings
+from app.core.config import settings
 from playwright.sync_api import  Page
 from cf_clearance import sync_cf_retry, sync_stealth
 

@@ -5,6 +5,7 @@ from app.helper.module import ModuleHelper
 from app.log import logger
 from app.utils.singleton import SingletonClass
 from plugins.extendspider.base import _ExtendSpiderBase
+from schemas import SearchContext
 
 
 # cc = {
@@ -115,10 +116,10 @@ class SpiderHelper(metaclass=SingletonClass):
             self._extend_running_plugins = {}
         logger.info("插件停止完成")
 
-    def search(self, s_name, keyword, page, context_id: Optional[str] = None):
+    def search(self, s_name, keyword, page, search_context: Optional[SearchContext] = None):
         spider = self._extend_running_plugins.get(s_name)
         if spider:
-            return spider.search(keyword, page, context_id)
+            return spider.search(keyword, page, search_context)
         return []
 
     def test_all_connectivity(self) -> Dict[str, Tuple[bool, str]]:
