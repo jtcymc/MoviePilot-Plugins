@@ -4,7 +4,7 @@
     "description": "索引器支持检索Jackett站点资源",
     "labels": "索引器,Jackett",
     "version": "1.2",
-    "icon": "Jackett.png",
+    "icon": "Jackett_A.png",
     "author": "shaw",
     "level": 1,
     "history": {
