@@ -181,7 +181,9 @@ class ExtendSpider(_PluginBase):
             indexers.extend(spider.get_indexers())
         return indexers
 
-    @cached(cache=TTLCache(maxsize=360, ttl=2 * 60 * 60))
+    @cached(cache=TTLCache(maxsize=200, ttl=1 * 3600),
+            key=lambda self, indexer, keyword, page, search_context=None: (indexer.get("id"), keyword, page,
+                                                                           hash(f"{search_context.search_type}{search_context.search_sub_id}{search_context.media_info.title} ") if search_context else None))
     def search(self, indexer, keyword, page, search_context: Optional[SearchContext] = None):
         """
         根据关键字多线程检索
