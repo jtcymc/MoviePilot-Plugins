@@ -89,7 +89,7 @@ class BtBuLuoSpider(_ExtendSpiderBase):
                     return results
 
                 except Exception as e:
-                    logger.error(f"搜索过程发生错误: {str(e)}")
+                    logger.error(f"{self.spider_name}-搜索过程发生错误: {str(e)}")
                     return []
                 finally:
                     browser_page.close()
