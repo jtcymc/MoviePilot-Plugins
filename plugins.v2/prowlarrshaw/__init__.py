@@ -9,9 +9,9 @@ from cachetools import cached, TTLCache
 
 from app.plugins import _PluginBase
 from app.core.config import settings
-from schemas import SearchContext
-from utils.http import RequestUtils
-from utils.string import StringUtils
+from app.schemas import SearchContext
+from app.utils.http import RequestUtils
+from app.utils.string import StringUtils
 from app.log import logger
 
 class ProwlarrShaw(_PluginBase):

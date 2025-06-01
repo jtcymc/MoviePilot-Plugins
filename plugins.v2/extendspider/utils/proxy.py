@@ -7,7 +7,6 @@ from requests.models import Response
 from requests.structures import CaseInsensitiveDict
 import time
 import random
-from urllib.parse import urlparse
 from app.log import logger
 
 class ProxyBase(ABC):

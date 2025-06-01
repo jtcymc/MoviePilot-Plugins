@@ -11,10 +11,10 @@ from cachetools import cached, TTLCache
 from app.log import logger
 from app.plugins import _PluginBase
 from app.core.config import settings
-from schemas import SearchContext
-from utils.dom import DomUtils
-from utils.http import RequestUtils
-from utils.string import StringUtils
+from app.schemas import SearchContext
+from app.utils.dom import DomUtils
+from app.utils.http import RequestUtils
+from app.utils.string import StringUtils
 
 
 class JackettShaw(_PluginBase):

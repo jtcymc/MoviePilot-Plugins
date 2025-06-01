@@ -8,12 +8,11 @@ from app.core.config import settings
 from plugins.extendspider.plugins.base import _ExtendSpiderBase
 from app.plugins.extendspider.utils.url import pass_cloudflare
 from playwright.sync_api import sync_playwright, Page
-from app.schemas import SearchContext
+from app.schemas import SearchContext, TorrentInfo
 from playwright_stealth import stealth_sync
 
 from app.helper.search_filter import SearchFilterHelper
 from app.utils.common import retry
-from schemas import TorrentInfo
 from utils.string import StringUtils
 
 
@@ -21,8 +20,6 @@ class BtBtlSpider(_ExtendSpiderBase):
 
     def __init__(self, config: dict = None):
         super(BtBtlSpider, self).__init__(config)
-
-
 
     def init_spider(self, config: dict = None):
         self.spider_url = "https://www.btbtl.com"

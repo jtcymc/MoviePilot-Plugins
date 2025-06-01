@@ -6,8 +6,8 @@ from cachetools import TTLCache, cached
 
 from app.plugins import _PluginBase
 from app.log import logger
-from schemas import SearchContext
-from .utils.spinder_helper import SpiderHelper
+from app.schemas import SearchContext
+from .utils.spider_helper import SpiderHelper
 
 spider_configs = \
     {

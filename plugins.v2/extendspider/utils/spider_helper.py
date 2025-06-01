@@ -5,7 +5,7 @@ from app.helper.module import ModuleHelper
 from app.log import logger
 from app.utils.singleton import SingletonClass
 from plugins.extendspider.plugins.base import _ExtendSpiderBase
-from schemas import SearchContext
+from app.schemas import SearchContext
 
 
 # cc = {
