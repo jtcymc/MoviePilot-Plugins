@@ -1,5 +1,5 @@
 # MoviePilot 插件
-
+ ps: 仅供学习使用， 请勿用于非法用途。
 ## 插件目录
 
 ### V2版本插件
@@ -7,7 +7,7 @@
 #### Jackett Shaw
 - 插件名称: Jackett
 - 插件描述: 索引器支持检索Jackett站点资源
-- 插件版本: 1.0
+- 插件版本: 1.2
 - 插件作者: shaw
 - 作者主页: https://github.com/jtcymc
 - 主要功能:
@@ -32,7 +32,7 @@
 #### Prowlarr Shaw
 - 插件名称: Prowlarr
 - 插件描述: 索引器支持检索Prowlarr站点资源
-- 插件版本: 1.0
+- 插件版本: 1.2
 - 插件作者: shaw
 - 作者主页: https://github.com/jtcymc
 - 主要功能:
