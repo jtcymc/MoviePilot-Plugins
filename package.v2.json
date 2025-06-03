@@ -10,7 +10,7 @@
     "history": {
       "v1.0": "适配MoviePilot V2 版本",
       "v1.1": "优化逻辑，增加数据缓存",
-      "v1.2" : "适配更多BT源"
+      "v1.2": "适配更多BT源"
     }
   },
   "ProwlarrShaw": {
@@ -24,7 +24,7 @@
     "history": {
       "v1.0": "适配MoviePilot V2 版本",
       "v1.1": "优化逻辑，增加数据缓存",
-      "v1.2" : "适配更多BT源"
+      "v1.2": "适配更多BT源"
     }
   },
   "ExtendSpider": {
@@ -38,7 +38,19 @@
     "history": {
       "v1.0": "适配MoviePilot V2 版本",
       "v1.1": "* 优化逻辑，增加数据缓存;<br/> * 适配更多BT源",
-      "v1.2" : "* 适配更多BT源;<br/> * 适配更多索引器"
+      "v1.2": "* 适配更多BT源;<br/> * 适配更多索引器"
+    }
+  },
+  "JackettExtend": {
+    "name": "JackettExtend",
+    "description": "扩展检索以支持Jackett站点资源",
+    "labels": "索引器,Jackett",
+    "version": "1.0",
+    "icon": "Jackett_A.png",
+    "author": "shaw",
+    "level": 1,
+    "history": {
+      "v1.0": "适配MoviePilot V2 版本"
     }
   }
 }
