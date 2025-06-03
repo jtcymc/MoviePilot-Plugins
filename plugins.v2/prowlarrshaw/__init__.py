@@ -122,6 +122,7 @@ class ProwlarrShaw(_PluginBase):
             "host": self._host,
             "api_key": self._api_key
         })
+
     def get_api(self) -> List[Dict[str, Any]]:
         """
         获取插件API
@@ -133,6 +134,7 @@ class ProwlarrShaw(_PluginBase):
         }]
         """
         pass
+
     def get_indexers(self):
         """
         获取配置的prowlarr indexer
@@ -149,8 +151,6 @@ class ProwlarrShaw(_PluginBase):
             ret = RequestUtils(headers=headers).get_res(indexer_query_url)
             if not ret or not ret.json():
                 return []
-            if not ret.json():
-                return []
             ret_indexers = ret.json()["indexers"]
             if not ret_indexers:
                 return []
@@ -158,7 +158,7 @@ class ProwlarrShaw(_PluginBase):
                 "id": f'{self.plugin_name}-{v["indexerId"]}',
                 "name": f'【{self.plugin_name}】{v["indexerName"]}',
                 "url": f'{self._host}/api/v1/indexer/{v["indexerId"]}',
-                "domain": self.prowlarr_domain.replace(self.plugin_author,v["indexerId"]),
+                "domain": self.prowlarr_domain.replace(self.plugin_author, str(v["indexerId"])),
                 "public": True,
                 "proxy": False,
                 "parser": "PluginExtendSpider"
@@ -203,8 +203,6 @@ class ProwlarrShaw(_PluginBase):
             if not ret or not ret.json():
                 return []
             ret_indexers = ret.json()
-            if not ret_indexers:
-                return []
             torrents = []
             for entry in ret_indexers:
                 tmp_dict = {
@@ -277,12 +275,11 @@ class ProwlarrShaw(_PluginBase):
                                 },
                                 'content': [
                                     {
-                                        'component': 'VTextField',
+                                        'component': 'VSwitch',
                                         'props': {
-                                            'model': 'cron',
-                                            'label': '更新周期',
-                                            'placeholder': '0 0 */24 * *',
-                                            'hint': '索引列表更新周期，支持5位cron表达式，默认每24小时运行一次'
+                                            'model': 'onlyonce',
+                                            'label': '立即运行一次',
+                                            'hint': '打开后立即运行一次获取索引器列表，否则需要等到预先设置的更新周期才会获取'
                                         }
                                     }
                                 ]
@@ -295,11 +292,12 @@ class ProwlarrShaw(_PluginBase):
                                 },
                                 'content': [
                                     {
-                                        'component': 'VSwitch',
+                                        'component': 'VTextField',
                                         'props': {
-                                            'model': 'onlyonce',
-                                            'label': '立即运行一次',
-                                            'hint': '打开后立即运行一次获取索引器列表，否则需要等到预先设置的更新周期才会获取'
+                                            'model': 'cron',
+                                            'label': '更新周期',
+                                            'placeholder': '0 0 */24 * *',
+                                            'hint': '索引列表更新周期，支持5位cron表达式，默认每24小时运行一次'
                                         }
                                     }
                                 ]
@@ -378,6 +376,7 @@ class ProwlarrShaw(_PluginBase):
             "cron": "0 0 */24 * *",
             "onlyonce": False
         }
+
     def get_page(self) -> List[dict]:
         """
         拼装插件详情页面，需要返回页面配置，同时附带数据
@@ -392,7 +391,7 @@ class ProwlarrShaw(_PluginBase):
                 'content': [
                     {
                         'component': 'td',
-                        'text': site.get("id")
+                        'text': site.get("name")
                     },
                     {
                         'component': 'td',
@@ -463,6 +462,7 @@ class ProwlarrShaw(_PluginBase):
                 ]
             }
         ]
+
     def _ensure_sites_loaded(self) -> bool:
         """
         确保 self._indexers 已加载数据，若为空则尝试重新加载。
