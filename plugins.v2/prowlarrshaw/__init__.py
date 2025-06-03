@@ -14,6 +14,7 @@ from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 from app.log import logger
 
+
 class ProwlarrShaw(_PluginBase):
     # 插件名称
     plugin_name = "ProwlarrShaw"
@@ -22,7 +23,7 @@ class ProwlarrShaw(_PluginBase):
     # 插件图标
     plugin_icon = "Prowlarr.png"
     # 插件版本
-    plugin_version = "1.2"
+    plugin_version = "1.2.1"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -43,7 +44,8 @@ class ProwlarrShaw(_PluginBase):
     _host = ""
     _api_key = ""
     _onlyonce = False
-    _indexers = None
+    _indexers = []
+    prowlarr_domain = "prowlarr_extend.shaw"
 
     def init_plugin(self, config: dict = None):
         """
@@ -61,9 +63,7 @@ class ProwlarrShaw(_PluginBase):
             self._enabled = config.get("enabled")
             self._proxy = config.get("proxy")
             self._onlyonce = config.get("onlyonce")
-            self._cron = config.get("cron")
-            if not StringUtils.is_string_and_not_empty(self._cron):
-                self._cron = "0 0 */24 * *"
+            self._cron = config.get("cron") or "0 0 */24 * *"
 
         # 停止现有任务
         self.stop_service()
@@ -85,8 +85,6 @@ class ProwlarrShaw(_PluginBase):
             # 启动服务
             self._scheduler.print_jobs()
             self._scheduler.start()
-        if not StringUtils.is_string_and_not_empty(self._cron):
-            self._cron = "0 0 */24 * *"
 
     def get_status(self):
         """
@@ -139,22 +137,18 @@ class ProwlarrShaw(_PluginBase):
         indexer_query_url = f"{self._host}/api/v1/indexerstats"
         try:
             ret = RequestUtils(headers=headers).get_res(indexer_query_url)
-            if not ret:
-                return []
-            if not RequestUtils.check_response_is_valid_json(ret):
-                logger.info(f"【{self.plugin_name}】参数设置不正确，请检查所有的参数是否填写正确")
+            if not ret or not ret.json():
                 return []
             if not ret.json():
                 return []
             ret_indexers = ret.json()["indexers"]
-            if not ret or ret_indexers == [] or ret is None:
+            if not ret_indexers:
                 return []
-
             indexers = [{
-                "id": f'{self.plugin_name}-{v["indexerName"]}',
+                "id": f'{self.plugin_name}-{v["indexerId"]}',
                 "name": f'【{self.plugin_name}】{v["indexerName"]}',
                 "url": f'{self._host}/api/v1/indexer/{v["indexerId"]}',
-                "domain": StringUtils.get_url_domain(self._host),
+                "domain": self.prowlarr_domain.replace(self.plugin_author,v["indexerId"]),
                 "public": True,
                 "proxy": False,
                 "parser": "PluginExtendSpider"
@@ -168,7 +162,6 @@ class ProwlarrShaw(_PluginBase):
             key=lambda self, indexer, keyword, page, search_context=None: (indexer.get("id"), keyword, page,
                                                                            hash(
                                                                                f"{search_context.search_type}{search_context.search_sub_id}{search_context.media_info.title} ") if search_context else None))
-
     def search(self, indexer, keyword, page, search_context: Optional[SearchContext] = None):
         """
         根据关键字多线程检索
@@ -197,34 +190,20 @@ class ProwlarrShaw(_PluginBase):
             }
             api_url = f"{self._host}/api/v1/search?query={keyword}&indexerIds={indexerId}&type=search&limit=100&offset=0"
             ret = RequestUtils(headers=headers).get_res(api_url)
-            if not ret:
+            if not ret or not ret.json():
                 return []
-            if not RequestUtils.check_response_is_valid_json(ret):
-                logger.info(f"【{self.plugin_name}】参数设置不正确，请检查所有的参数是否填写正确")
-                return []
-            if not ret.json():
-                return []
-
             ret_indexers = ret.json()
-            if not ret or ret_indexers == [] or ret is None:
+            if not ret_indexers:
                 return []
-
             torrents = []
             for entry in ret_indexers:
                 tmp_dict = {
-                    # 'id': entry["indexerId"],
-                    # 'indexer': entry["indexer"],
                     'title': entry["title"],
                     'enclosure': entry["downloadUrl"],
                     'description': entry["sortTitle"],
                     'size': entry["size"],
                     'seeders': entry["seeders"],
-                    'peers': None,
-                    # 'freeleech': None,
-                    'downloadvolumefactor': None,
-                    'uploadvolumefactor': None,
                     'page_url': entry["guid"],
-                    'imdbid': None
                 }
                 torrents.append(tmp_dict)
             return torrents
@@ -290,6 +269,46 @@ class ProwlarrShaw(_PluginBase):
                                     {
                                         'component': 'VTextField',
                                         'props': {
+                                            'model': 'cron',
+                                            'label': '更新周期',
+                                            'placeholder': '0 0 */24 * *',
+                                            'hint': '索引列表更新周期，支持5位cron表达式，默认每24小时运行一次'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'onlyonce',
+                                            'label': '立即运行一次',
+                                            'hint': '打开后立即运行一次获取索引器列表，否则需要等到预先设置的更新周期才会获取'
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
                                             'model': 'host',
                                             'label': 'Prowlarr地址',
                                             'placeholder': 'http://127.0.0.1:9696',
@@ -325,39 +344,22 @@ class ProwlarrShaw(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
                                 },
                                 'content': [
                                     {
-                                        'component': 'VTextField',
+                                        'component': 'VAlert',
                                         'props': {
-                                            'model': 'cron',
-                                            'label': '更新周期',
-                                            'placeholder': '0 0 */24 * *',
-                                            'hint': '索引列表更新周期，支持5位cron表达式，默认每24小时运行一次'
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'onlyonce',
-                                            'label': '立即运行一次',
-                                            'hint': '打开后立即运行一次获取索引器列表，否则需要等到预先设置的更新周期才会获取'
+                                            'type': 'info',
+                                            'variant': 'tonal',
+                                            'text': '本插件涉及修改源代码，请勿使用！'
+                                                    '替代插件详见=> https://github.com/jtcymc/MoviePilot-PluginsV2'
                                         }
                                     }
                                 ]
                             }
                         ]
                     }
+
                 ]
             }
         ], {
@@ -366,18 +368,6 @@ class ProwlarrShaw(_PluginBase):
             "cron": "0 0 */24 * *",
             "onlyonce": False
         }
-    def _ensure_sites_loaded(self) -> bool:
-        """
-        确保 self._indexers 已加载数据，若为空则尝试重新加载。
-        :return: 成功加载返回 True，否则 False
-        """
-        if isinstance(self._indexers, list) and len(self._indexers) > 0:
-            return True
-
-        # 尝试重新加载站点数据
-        self.get_status()
-
-        return isinstance(self._indexers, list) and len(self._indexers) > 0
     def get_page(self) -> List[dict]:
         """
         拼装插件详情页面，需要返回页面配置，同时附带数据
@@ -439,7 +429,7 @@ class ProwlarrShaw(_PluginBase):
                                                         'props': {
                                                             'class': 'text-start ps-4'
                                                         },
-                                                        'text': '索引'
+                                                        'text': '站点domain'
                                                     },
                                                     {
                                                         'component': 'th',
@@ -463,3 +453,15 @@ class ProwlarrShaw(_PluginBase):
                 ]
             }
         ]
+    def _ensure_sites_loaded(self) -> bool:
+        """
+        确保 self._indexers 已加载数据，若为空则尝试重新加载。
+        :return: 成功加载返回 True，否则 False
+        """
+        if isinstance(self._indexers, list) and len(self._indexers) > 0:
+            return True
+
+        # 尝试重新加载站点数据
+        self.get_status()
+
+        return isinstance(self._indexers, list) and len(self._indexers) > 0

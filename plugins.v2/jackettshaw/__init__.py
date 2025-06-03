@@ -25,7 +25,7 @@ class JackettShaw(_PluginBase):
     # 插件图标
     plugin_icon = "Jackett_A.png"
     # 插件版本
-    plugin_version = "1.2"
+    plugin_version = "1.2.1"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -48,7 +48,9 @@ class JackettShaw(_PluginBase):
     _api_key = ""
     _password = ""
     _onlyonce = False
-    _indexers = None
+    _indexers = []
+    # 仅用于标识，避免重复注册
+    jackett_domain = "jackett_extend.shaw"
 
     def init_plugin(self, config: dict = None):
         """
@@ -67,7 +69,7 @@ class JackettShaw(_PluginBase):
             self._enabled = config.get("enabled")
             self._proxy = config.get("proxy")
             self._onlyonce = config.get("onlyonce")
-            self._cron = config.get("cron")
+            self._cron = config.get("cron") or "0 0 */24 * *"
         if not self._enabled:
             return
         # 停止现有任务
@@ -90,8 +92,6 @@ class JackettShaw(_PluginBase):
             # 启动服务
             self._scheduler.print_jobs()
             self._scheduler.start()
-        if not StringUtils.is_string_and_not_empty(self._cron):
-            self._cron = "0 0 */24 * *"
 
     def get_status(self):
         """
@@ -157,18 +157,13 @@ class JackettShaw(_PluginBase):
         try:
             ret = RequestUtils(headers=headers, cookies=cookie).get_res(indexer_query_url,
                                                                         proxies=settings.PROXY if self._proxy else None)
-            if not ret:
-                return []
-            if not RequestUtils.check_response_is_valid_json(ret):
-                logger.info(f"【{self.plugin_name}】参数设置不正确，请检查所有的参数是否填写正确")
-                return []
-            if not ret.json():
+            if not ret or not ret.json():
                 return []
             indexers = [{
                 "id": f'{self.plugin_name}-{v["id"]}',
                 "name": f'【{self.plugin_name}】{v["name"]}',
                 "url": f'{self._host}/api/v2.0/indexers/{v["id"]}/results/torznab/',
-                "domain": StringUtils.get_url_domain(self._host),
+                "domain": self.jackett_domain.replace(self.plugin_author,v["id"]),
                 "public": True,
                 "proxy": False,
                 "parser": "PluginExtendSpider"
@@ -228,12 +223,9 @@ class JackettShaw(_PluginBase):
         except Exception as e:
             logger.error(str(e))
             return []
-        if not ret:
+        if not ret or not ret.text:
             return []
         xmls = ret.text
-        if not xmls:
-            return []
-
         torrents = []
         try:
             # 解析XML
@@ -242,12 +234,6 @@ class JackettShaw(_PluginBase):
             items = root_node.getElementsByTagName("item")
             for item in items:
                 try:
-                    # indexer id
-                    indexer_id = DomUtils.tag_value(item, "jackettindexer", "id",
-                                                    default=DomUtils.tag_value(item, "jackettindexer", "id", ""))
-                    # indexer
-                    indexer = DomUtils.tag_value(item, "jackettindexer",
-                                                 default=DomUtils.tag_value(item, "jackettindexer", default=""))
 
                     # 标题
                     title = DomUtils.tag_value(item, "title", default="")
@@ -271,12 +257,6 @@ class JackettShaw(_PluginBase):
                     seeders = 0
                     # 下载数
                     peers = 0
-                    # 是否免费
-                    freeleech = False
-                    # 下载因子
-                    downloadvolumefactor = 1.0
-                    # 上传因子
-                    uploadvolumefactor = 1.0
                     # imdbid
                     imdbid = ""
 
@@ -298,17 +278,12 @@ class JackettShaw(_PluginBase):
                             imdbid = value
 
                     tmp_dict = {
-                        # 'id': indexer_id,
-                        # 'indexer': indexer,
                         'title': title,
                         'enclosure': enclosure,
                         'description': description,
                         'size': size,
                         'seeders': seeders,
                         'peers': peers,
-                        # 'freeleech': freeleech,
-                        'downloadvolumefactor': downloadvolumefactor,
-                        'uploadvolumefactor': uploadvolumefactor,
                         'page_url': page_url,
                         'imdbid': imdbid
                     }
@@ -367,9 +342,32 @@ class JackettShaw(_PluginBase):
                                                 }
                                             }
                                         ]
+                                    },
+                                    {
+                                        'component': 'VCol',
+                                        'props': {
+                                            'cols': 12,
+                                            'md': 6
+                                        },
+                                        'content': [
+                                            {
+                                                'component': 'VSwitch',
+                                                'props': {
+                                                    'model': 'onlyonce',
+                                                    'label': '立即运行一次',
+                                                    'hint': '打开后立即运行一次获取索引器列表，否则需要等到预先设置的更新周期才会获取'
+                                                }
+                                            }
+                                        ]
                                     }
                                 ]
                             },
+
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
                             {
                                 'component': 'VCol',
                                 'props': {
@@ -457,15 +455,15 @@ class JackettShaw(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
                                 },
                                 'content': [
                                     {
-                                        'component': 'VSwitch',
+                                        'component': 'VAlert',
                                         'props': {
-                                            'model': 'onlyonce',
-                                            'label': '立即运行一次',
-                                            'hint': '打开后立即运行一次获取索引器列表，否则需要等到预先设置的更新周期才会获取'
+                                            'type': 'info',
+                                            'variant': 'tonal',
+                                            'text': '本插件涉及修改源代码，请勿使用！'
+                                                    '替代插件详见=> https://github.com/jtcymc/MoviePilot-PluginsV2'
                                         }
                                     }
                                 ]
@@ -484,22 +482,10 @@ class JackettShaw(_PluginBase):
             "onlyonce": False
         }
 
-    def _ensure_sites_loaded(self) -> bool:
-        """
-        确保 self._indexers 已加载数据，若为空则尝试重新加载。
-        :return: 成功加载返回 True，否则 False
-        """
-        if isinstance(self._indexers, list) and len(self._indexers) > 0:
-            return True
-
-        # 尝试重新加载站点数据
-        self.get_status()
-
-        return isinstance(self._indexers, list) and len(self._indexers) > 0
 
     def get_page(self) -> List[dict]:
         """
-        拼装插件详情页面，需要返回页面配置，同时附带数据
+            拼装插件详情页面，需要返回页面配置，同时附带数据
         """
         if not self._ensure_sites_loaded():
             return []
@@ -558,7 +544,7 @@ class JackettShaw(_PluginBase):
                                                         'props': {
                                                             'class': 'text-start ps-4'
                                                         },
-                                                        'text': '索引'
+                                                        'text': '站点domain'
                                                     },
                                                     {
                                                         'component': 'th',
@@ -582,3 +568,15 @@ class JackettShaw(_PluginBase):
                 ]
             }
         ]
+    def _ensure_sites_loaded(self) -> bool:
+        """
+        确保 self._indexers 已加载数据，若为空则尝试重新加载。
+        :return: 成功加载返回 True，否则 False
+        """
+        if isinstance(self._indexers, list) and len(self._indexers) > 0:
+            return True
+
+        # 尝试重新加载站点数据
+        self.get_status()
+
+        return isinstance(self._indexers, list) and len(self._indexers) > 0
