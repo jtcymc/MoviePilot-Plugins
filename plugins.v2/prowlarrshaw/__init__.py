@@ -122,7 +122,17 @@ class ProwlarrShaw(_PluginBase):
             "host": self._host,
             "api_key": self._api_key
         })
-
+    def get_api(self) -> List[Dict[str, Any]]:
+        """
+        获取插件API
+        [{
+            "path": "/xx",
+            "endpoint": self.xxx,
+            "methods": ["GET", "POST"],
+            "summary": "API说明"
+        }]
+        """
+        pass
     def get_indexers(self):
         """
         获取配置的prowlarr indexer

@@ -206,8 +206,7 @@ class JackettShaw(_PluginBase):
             "summary": "API说明"
         }]
         """
-
-    pass
+        pass
 
     def __parse_torznab_xml(self, url):
         """
