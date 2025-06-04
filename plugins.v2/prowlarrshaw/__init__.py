@@ -1,4 +1,5 @@
 # _*_ coding: utf-8 _*_
+import traceback
 from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime, timedelta
 import re
@@ -23,7 +24,7 @@ class ProwlarrShaw(_PluginBase):
     # 插件图标
     plugin_icon = "Prowlarr.png"
     # 插件版本
-    plugin_version = "1.2.3"
+    plugin_version = "1.2.4"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -207,16 +208,18 @@ class ProwlarrShaw(_PluginBase):
             for entry in ret_indexers:
                 tmp_dict = {
                     'title': entry["title"],
-                    'enclosure': entry["downloadUrl"],
+                    'enclosure': entry["downloadUrl"] if hasattr(entry, "downloadUrl") and entry["downloadUrl"] else
+                    entry["magnetUrl"],
                     'description': entry["sortTitle"],
                     'size': entry["size"],
                     'seeders': entry["seeders"],
-                    'page_url': entry["guid"],
+                    "pubdate": entry["publishDate"],
+                    'page_url': entry["infoUrl"] if hasattr(entry, "infoUrl") and entry["infoUrl"] else entry["guid"],
                 }
                 torrents.append(tmp_dict)
             return torrents
         except Exception as e:
-            logger.error(str(e))
+            logger.error(f"请求错误：{str(e)},{traceback.format_exc()}")
             return []
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
