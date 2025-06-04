@@ -25,7 +25,7 @@ class JackettShaw(_PluginBase):
     # 插件图标
     plugin_icon = "Jackett_A.png"
     # 插件版本
-    plugin_version = "1.2.2"
+    plugin_version = "1.2.3"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -499,7 +499,7 @@ class JackettShaw(_PluginBase):
                     },
                     {
                         'component': 'td',
-                        'text': site.get("domain")
+                        'text': f"https://{site.get('domain')}"
                     },
                     {
                         'component': 'td',

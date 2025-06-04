@@ -3,7 +3,7 @@
     "name": "Jackett",
     "description": "索引器支持检索Jackett站点资源",
     "labels": "索引器,Jackett",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "icon": "Jackett_A.png",
     "author": "shaw",
     "level": 1,
@@ -12,14 +12,15 @@
       "v1.1": "优化逻辑，增加数据缓存",
       "v1.2": "适配更多BT源",
       "v1.2.1": "优化处理逻辑",
-      "v1.2.2": "修复已知问题"
+      "v1.2.2": "修复已知问题",
+      "v1.2.3": "修复已知问题"
     }
   },
   "ProwlarrShaw": {
     "name": "Prowlarr",
     "description": "索引器支持检索Prowlarr站点资源",
     "labels": "索引器,Prowlarr",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "icon": "Prowlarr.png",
     "author": "shaw",
     "level": 1,
@@ -28,7 +29,8 @@
       "v1.1": "优化逻辑，增加数据缓存",
       "v1.2": "适配更多BT源",
       "v1.2.1": "优化处理逻辑",
-      "v1.2.2": "修复已知问题"
+      "v1.2.2": "修复已知问题",
+      "v1.2.3": "修复已知问题"
     }
   },
   "ExtendSpider": {
