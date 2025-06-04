@@ -190,7 +190,7 @@ class ExtendSpider(_PluginBase):
         """
         if not indexer or not keyword:
             return None
-        s_name = indexer.get("id", "").split('-')[1]
+        s_name = indexer.get("name", "").split('-')[1]
         logger.info(f"【{self.plugin_name}】开始检索Indexer：{s_name} ...")
         ret = self._spider_helper.search(s_name, keyword, page, search_context=search_context)
         logger.info(f"【{self.plugin_name}】检索Indexer：{s_name} 返回资源数：{len(ret)}")
