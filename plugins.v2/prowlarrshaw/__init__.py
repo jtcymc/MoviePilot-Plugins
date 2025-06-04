@@ -3,6 +3,8 @@ import traceback
 from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime, timedelta
 import re
+from urllib.parse import urlencode, quote_plus
+
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -10,7 +12,7 @@ from cachetools import cached, TTLCache
 
 from app.plugins import _PluginBase
 from app.core.config import settings
-from app.schemas import SearchContext
+from app.schemas import SearchContext, MediaType
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
 from app.log import logger
@@ -24,7 +26,7 @@ class ProwlarrShaw(_PluginBase):
     # 插件图标
     plugin_icon = "Prowlarr.png"
     # 插件版本
-    plugin_version = "1.2.4"
+    plugin_version = "1.2.5"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -138,8 +140,9 @@ class ProwlarrShaw(_PluginBase):
 
     def get_indexers(self):
         """
-        获取配置的prowlarr indexer
-        :return: indexer 信息 [(indexerId, indexerName, url)]
+        获取配置的 Prowlarr Indexer 信息
+
+        :return: Indexer 列表，包含 id, name, url, domain, public, proxy 信息
         """
         headers = {
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -147,26 +150,43 @@ class ProwlarrShaw(_PluginBase):
             "X-Api-Key": self._api_key,
             "Accept": "application/json, text/javascript, */*; q=0.01"
         }
-        indexer_query_url = f"{self._host}/api/v1/indexerstats"
+        indexer_query_url = f"{self._host.rstrip('/')}/api/v1/indexerstats"
         try:
             ret = RequestUtils(headers=headers).get_res(indexer_query_url)
-            if not ret or not ret.json():
+            if not ret:
+                logger.warning(f"【{self.plugin_name}】获取 indexer 请求无响应")
                 return []
-            ret_indexers = ret.json()["indexers"]
-            if not ret_indexers:
+
+            data = ret.json()
+            if not data or "indexers" not in data:
+                logger.warning(f"【{self.plugin_name}】返回数据不包含 indexers 字段")
                 return []
-            indexers = [{
-                "id": f'{self.plugin_name}-{v["indexerName"]}',
-                "name": f'{self.plugin_name}-{v["indexerName"]}',
-                "url": f'{self._host}/api/v1/indexer/{v["indexerId"]}',
-                "domain": self.prowlarr_domain.replace(self.plugin_author, str(v["indexerId"])),
-                "public": True,
-                "proxy": False,
-                "parser": "PluginExtendSpider"
-            } for v in ret_indexers]
+
+            indexers_raw = data.get("indexers", [])
+            if not indexers_raw:
+                logger.info(f"【{self.plugin_name}】未配置任何 indexer")
+                return []
+
+            indexers = []
+            for v in indexers_raw:
+                indexer_id = v.get("indexerId")
+                indexer_name = v.get("indexerName")
+                if not indexer_id or not indexer_name:
+                    continue
+
+                indexers.append({
+                    "id": f'{self.plugin_name}-{indexer_name}',
+                    "name": f'{self.plugin_name}-{indexer_name}',
+                    "url": f'{self._host.rstrip("/")}/api/v1/indexer/{indexer_id}',
+                    "domain": self.prowlarr_domain.replace(self.plugin_author, str(indexer_id)),
+                    "public": True,
+                    "proxy": False,
+                    "parser": "PluginExtendSpider"
+                })
+
             return indexers
         except Exception as e:
-            logger.error(str(e))
+            logger.error(f"【{self.plugin_name}】获取 indexer 失败：{str(e)}")
             return []
 
     @cached(cache=TTLCache(maxsize=200, ttl=1 * 3600),
@@ -179,17 +199,17 @@ class ProwlarrShaw(_PluginBase):
         """
         if not indexer or not keyword:
             return None
-        logger.info(f"【{self.plugin_name}】开始检索Indexer：{indexer.get("name")} ...")
+        # 获取分类
+        categories = self.get_cat(search_context=search_context)
+        indexer_name = indexer.get("name")
+        logger.info(f"【{self.plugin_name}】开始检索 Indexer：{indexer_name}，分类：{categories}...")
 
-        # 获取indexerId
-        indexerId_pattern = r"/indexer/([^/]+)"
-        indexerId_match = re.search(indexerId_pattern, indexer.get("url"))
-        indexerId = ""
-        if indexerId_match:
-            indexerId = indexerId_match.group(1)
+        # 提取 indexerId
+        indexer_id_match = re.search(r"/indexer/([^/]+)", indexer.get("url", ""))
+        indexer_id = indexer_id_match.group(1) if indexer_id_match else ""
 
-        if not StringUtils.is_string_and_not_empty(indexerId):
-            logger.info(f"【{self.plugin_name}】{indexer.get("name")} 索引id为空")
+        if not StringUtils.is_string_and_not_empty(indexer_id):
+            logger.warning(f"【{self.plugin_name}】{indexer_name} 索引 ID 为空，跳过检索")
             return []
 
         try:
@@ -199,28 +219,55 @@ class ProwlarrShaw(_PluginBase):
                 "X-Api-Key": self._api_key,
                 "Accept": "application/json, text/javascript, */*; q=0.01"
             }
-            api_url = f"{self._host}/api/v1/search?query={keyword}&indexerIds={indexerId}&type=search&limit=200&offset=0"
-            ret = RequestUtils(headers=headers).get_res(api_url)
-            if not ret or not ret.json():
+            # 构造 API 请求 URL
+            params = [
+                         ("query", keyword),
+                         ("indexerIds", indexer_id),
+                         ("type", "search"),
+                         ("limit", 150),
+                         ("offset", page * 150 if page else 0),
+                     ] + [("categories", cat) for cat in categories]
+            query_string = urlencode(params, quote_via=quote_plus)
+            api_url = f"{self._host.rstrip('/')}/api/v1/search?{query_string}"
+            response = RequestUtils(headers=headers).get_res(api_url)
+
+            # 校验响应内容
+            if not response:
+                logger.warning(f"【{self.plugin_name}】{indexer_name} 返回为空")
                 return []
-            ret_indexers = ret.json()
+
+            json_data = response.json()
+            if not isinstance(json_data, list):
+                logger.warning(f"【{self.plugin_name}】{indexer_name} 返回非列表数据")
+                return []
             torrents = []
-            for entry in ret_indexers:
-                tmp_dict = {
-                    'title': entry["title"],
-                    'enclosure': entry["downloadUrl"] if hasattr(entry, "downloadUrl") and entry["downloadUrl"] else
-                    entry["magnetUrl"],
-                    'description': entry["sortTitle"],
-                    'size': entry["size"],
-                    'seeders': entry["seeders"],
-                    "pubdate": entry["publishDate"],
-                    'page_url': entry["infoUrl"] if hasattr(entry, "infoUrl") and entry["infoUrl"] else entry["guid"],
-                }
-                torrents.append(tmp_dict)
+            for entry in json_data:
+                torrents.append({
+                    'title': entry.get("title"),
+                    'enclosure': entry.get("downloadUrl") or entry.get("magnetUrl"),
+                    'description': entry.get("sortTitle"),
+                    'size': entry.get("size"),
+                    'seeders': entry.get("seeders"),
+                    'pubdate': entry.get("publishDate"),
+                    'page_url': entry.get("infoUrl") or entry.get("guid"),
+                })
+            logger.info(f"【{self.plugin_name}】{indexer_name} 返回数据：{len(torrents)}")
+
             return torrents
         except Exception as e:
-            logger.error(f"请求错误：{str(e)},{traceback.format_exc()}")
+            logger.error(f"【{self.plugin_name}】{indexer_name} 请求失败: {e}\n{traceback.format_exc()}")
             return []
+
+    @staticmethod
+    def get_cat(search_context: Optional[SearchContext] = None):
+        if not search_context:
+            return [2000, 5000]
+        elif search_context.media_info.type == MediaType.MOVIE:
+            return [2000]
+        elif search_context.media_info.type == MediaType.TV:
+            return [5000]
+        else:
+            return [2000, 5000]
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         """

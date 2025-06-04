@@ -2,6 +2,8 @@
 from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime, timedelta
 import xml.dom.minidom
+from urllib.parse import urlencode, quote_plus
+
 import requests
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -11,7 +13,7 @@ from cachetools import cached, TTLCache
 from app.log import logger
 from app.plugins import _PluginBase
 from app.core.config import settings
-from app.schemas import SearchContext
+from app.schemas import SearchContext, MediaType
 from app.utils.dom import DomUtils
 from app.utils.http import RequestUtils
 from app.utils.string import StringUtils
@@ -25,7 +27,7 @@ class JackettShaw(_PluginBase):
     # 插件图标
     plugin_icon = "Jackett_A.png"
     # 插件版本
-    plugin_version = "1.2.3"
+    plugin_version = "1.2.4"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -133,44 +135,66 @@ class JackettShaw(_PluginBase):
 
     def get_indexers(self):
         """
-        获取配置的jackett indexer
-        :return: indexer 信息 [(indexerId, indexerName, url)]
+        获取配置的 Jackett Indexer 信息
+        :return: Indexer 列表，每项包含 id、name、url、domain、public、proxy、parser
         """
-        # 获取Cookie
         headers = {
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "User-Agent": settings.USER_AGENT,
             "X-Api-Key": self._api_key,
             "Accept": "application/json, text/javascript, */*; q=0.01"
         }
+
         cookie = None
         session = requests.session()
-        res = RequestUtils(headers=headers, session=session).post_res(
-            url=f"{self._host}/UI/Dashboard",
-            data={"password": self._password},
-            params={"password": self._password},
-            proxies=settings.PROXY if self._proxy else None
-        )
-        if res and session.cookies:
-            cookie = session.cookies.get_dict()
-        indexer_query_url = f"{self._host}/api/v2.0/indexers?configured=true"
+
         try:
-            ret = RequestUtils(headers=headers, cookies=cookie).get_res(indexer_query_url,
-                                                                        proxies=settings.PROXY if self._proxy else None)
+            login_url = f"{self._host.rstrip('/')}/UI/Dashboard"
+            login_data = {"password": self._password}
+            login_params = {"password": self._password}
+            login_res = RequestUtils(headers=headers, session=session).post_res(
+                url=login_url,
+                data=login_data,
+                params=login_params,
+                proxies=settings.PROXY if self._proxy else None
+            )
+            if login_res and session.cookies:
+                cookie = session.cookies.get_dict()
+            else:
+                logger.warning(f"【{self.plugin_name}】Jackett 登录失败，无法获取 cookie")
+
+            indexer_query_url = f"{self._host.rstrip('/')}/api/v2.0/indexers?configured=true"
+            ret = RequestUtils(headers=headers, cookies=cookie).get_res(
+                indexer_query_url,
+                proxies=settings.PROXY if self._proxy else None
+            )
+
             if not ret or not ret.json():
+                logger.warning(f"【{self.plugin_name}】未获取到任何 indexer 配置")
                 return []
-            indexers = [{
-                "id": f'{self.plugin_name}-{v["name"]}',
-                "name": f'{self.plugin_name}-{v["name"]}',
-                "url": f'{self._host}/api/v2.0/indexers/{v["id"]}/results/torznab/',
-                "domain": self.jackett_domain.replace(self.plugin_author, v["id"]),
-                "public": True,
-                "proxy": False,
-                "parser": "PluginExtendSpider"
-            } for v in ret.json()]
+
+            raw_indexers = ret.json()
+            indexers = []
+            for v in raw_indexers:
+                indexer_id = v.get("id")
+                indexer_name = v.get("name")
+                if not indexer_id or not indexer_name:
+                    continue
+
+                indexers.append({
+                    "id": f'{self.plugin_name}-{indexer_name}',
+                    "name": f'{self.plugin_name}-{indexer_name}',
+                    "url": f'{self._host.rstrip("/")}/api/v2.0/indexers/{indexer_id}/results/torznab/',
+                    "domain": self.jackett_domain.replace(self.plugin_author, str(indexer_id)),
+                    "public": True,
+                    "proxy": False,
+                    "parser": "PluginExtendSpider"
+                })
+
             return indexers
+
         except Exception as e:
-            logger.error(str(e))
+            logger.error(f"【{self.plugin_name}】获取 Jackett indexers 失败：{str(e)}")
             return []
 
     @cached(cache=TTLCache(maxsize=200, ttl=1 * 3600),
@@ -183,9 +207,20 @@ class JackettShaw(_PluginBase):
         """
         if not indexer or not keyword:
             return None
-        logger.info(f"【{self.plugin_name}】开始检索Indexer：{indexer.get("name")} ...")
-        # 特殊符号处理
-        api_url = f"{indexer.get("url")}?apikey={self._api_key}&t=search&q={keyword}"
+        # 获取分类
+        categories = self.get_cat(search_context=search_context)
+        logger.info(f"【{self.plugin_name}】开始检索Indexer：{indexer.get("name")} 分类：{categories}...")
+
+        # 构造查询参数
+        params = {
+            "apikey": self._api_key,
+            "t": "search",
+            "q": keyword,
+            "cat": ",".join(map(str, categories))
+        }
+        # 拼接完整 URL
+        query_string = urlencode(params, doseq=True, quote_via=quote_plus)
+        api_url = f"{indexer.get("url").rstrip("/")}?{query_string}"
 
         result_array = self.__parse_torznab_xml(api_url)
 
@@ -195,6 +230,17 @@ class JackettShaw(_PluginBase):
         else:
             logger.info(f"【{self.plugin_name}】{indexer.get("name")} 返回数据：{len(result_array)}")
             return result_array
+
+    @staticmethod
+    def get_cat(search_context: Optional[SearchContext] = None):
+        if not search_context:
+            return [2000, 5000]
+        elif search_context.media_info.type == MediaType.MOVIE:
+            return [2000]
+        elif search_context.media_info.type == MediaType.TV:
+            return [5000]
+        else:
+            return [2000, 5000]
 
     def get_api(self) -> List[Dict[str, Any]]:
         """
