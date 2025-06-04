@@ -201,7 +201,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     def get_indexer(self) -> dict:
         return {
             "id": f'{self._plugin_name}-{self.spider_name}',
-            "name": f'【{self._plugin_name}】{self.spider_name}',
+            "name": f'{self._plugin_name}-{self.spider_name}',
             "url": self.spider_url,
             "domain": self._get_domain(),
             "public": self.spider_public,

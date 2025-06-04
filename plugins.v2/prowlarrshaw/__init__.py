@@ -155,8 +155,8 @@ class ProwlarrShaw(_PluginBase):
             if not ret_indexers:
                 return []
             indexers = [{
-                "id": f'{self.plugin_name}-{v["indexerId"]}',
-                "name": f'【{self.plugin_name}】{v["indexerName"]}',
+                "id": f'{self.plugin_name}-{v["indexerName"]}',
+                "name": f'{self.plugin_name}-{v["indexerName"]}',
                 "url": f'{self._host}/api/v1/indexer/{v["indexerId"]}',
                 "domain": self.prowlarr_domain.replace(self.plugin_author, str(v["indexerId"])),
                 "public": True,
@@ -198,7 +198,7 @@ class ProwlarrShaw(_PluginBase):
                 "X-Api-Key": self._api_key,
                 "Accept": "application/json, text/javascript, */*; q=0.01"
             }
-            api_url = f"{self._host}/api/v1/search?query={keyword}&indexerIds={indexerId}&type=search&limit=100&offset=0"
+            api_url = f"{self._host}/api/v1/search?query={keyword}&indexerIds={indexerId}&type=search&limit=200&offset=0"
             ret = RequestUtils(headers=headers).get_res(api_url)
             if not ret or not ret.json():
                 return []

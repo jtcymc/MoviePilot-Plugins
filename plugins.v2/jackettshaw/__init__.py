@@ -160,10 +160,10 @@ class JackettShaw(_PluginBase):
             if not ret or not ret.json():
                 return []
             indexers = [{
-                "id": f'{self.plugin_name}-{v["id"]}',
-                "name": f'【{self.plugin_name}】{v["name"]}',
+                "id": f'{self.plugin_name}-{v["name"]}',
+                "name": f'{self.plugin_name}-{v["name"]}',
                 "url": f'{self._host}/api/v2.0/indexers/{v["id"]}/results/torznab/',
-                "domain": self.jackett_domain.replace(self.plugin_author,v["id"]),
+                "domain": self.jackett_domain.replace(self.plugin_author, v["id"]),
                 "public": True,
                 "proxy": False,
                 "parser": "PluginExtendSpider"
@@ -481,7 +481,6 @@ class JackettShaw(_PluginBase):
             "onlyonce": False
         }
 
-
     def get_page(self) -> List[dict]:
         """
             拼装插件详情页面，需要返回页面配置，同时附带数据
@@ -567,6 +566,7 @@ class JackettShaw(_PluginBase):
                 ]
             }
         ]
+
     def _ensure_sites_loaded(self) -> bool:
         """
         确保 self._indexers 已加载数据，若为空则尝试重新加载。
