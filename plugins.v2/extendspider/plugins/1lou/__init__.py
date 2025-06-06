@@ -4,10 +4,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from app.log import logger
 from app.core.config import settings
-from plugins.extendspider.plugins.base import _ExtendSpiderBase
+from app.plugins.extendspider.plugins.base import _ExtendSpiderBase
 from app.plugins.extendspider.utils.url import pass_cloudflare, xn_url_encode
-from playwright.sync_api import sync_playwright, Page
-from playwright_stealth import stealth_sync
+from app.plugins.extendspider.utils.browser import create_browser, create_stealth_page
+from playwright.sync_api import Page
 from app.schemas import SearchContext
 import threading
 
@@ -50,73 +50,43 @@ class Bt1louSpider(_ExtendSpiderBase):
 
         results = []
         try:
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(
-                    headless=True,
-                    args=[
-                        '--disable-blink-features=AutomationControlled',
-                        '--disable-features=IsolateOrigins,site-per-process',
-                        '--disable-site-isolation-trials',
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-accelerated-2d-canvas',
-                        '--no-first-run',
-                        '--no-zygote',
-                        '--disable-gpu'
-                    ]
-                )
-                context = browser.new_context(
-                    user_agent=settings.USER_AGENT,
-                    proxy=settings.PROXY_SERVER if self.spider_proxy else None,
-                    viewport={'width': 1920, 'height': 1080},
-                    locale='zh-CN',
-                    timezone_id='Asia/Shanghai',
-                    device_scale_factor=1,
-                    has_touch=False,
-                    is_mobile=False,
-                    java_script_enabled=True,
-                    ignore_https_errors=True,
-                    permissions=['geolocation']
-                )
-                browser_page = context.new_page()
-                stealth_sync(browser_page)
+            browser, context = create_browser(self.spider_proxy)
+            browser_page = create_stealth_page(context)
 
-                try:
-                    # 访问主页并处理 Cloudflare
-                    logger.info(f"{self.spider_name}-正在访问 {self.spider_url}...")
-                    if not pass_cloudflare(self.spider_url, browser_page):
-                        logger.warn("cloudflare challenge fail！")
-                        return []
-                    # 等待页面加载完成
-                    browser_page.wait_for_load_state("networkidle", timeout=30 * 1000)
-                    logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
-                    self._wait()
-                    self.spider_cookie = context.cookies()
-                    # 如果起始页大于1，只抓取指定页
-                    if page > self.spider_page_start:
-                        logger.info(
-                            f"{self.spider_name}-指定页码 {page} 大于起始页 {self.spider_page_start}，只抓取指定页")
-                        search_url = self.get_search_url(keyword, page)
-                        browser_page.goto(search_url)
-                        results.extend(self._parse_search_result_page(keyword, browser_page, True, ctx))
-                        return results
-
-                    # 执行搜索
-                    search_url = self.get_search_url(keyword, 1)
-                    browser_page.goto(search_url)
-                    browser_page.wait_for_load_state("networkidle", timeout=30 * 1000)
-                    results = self._parse_search_result_page(keyword, browser_page, False, ctx)
-                    logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
+            try:
+                # 访问主页并处理 Cloudflare
+                logger.info(f"{self.spider_name}-正在访问 {self.spider_url}...")
+                if not pass_cloudflare(self.spider_url, browser_page):
+                    logger.warn("cloudflare challenge fail！")
+                    return []
+                # 等待页面加载完成
+                browser_page.wait_for_load_state("networkidle", timeout=30 * 1000)
+                logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
+                self._wait()
+                self.spider_cookie = context.cookies()
+                # 如果起始页大于1，只抓取指定页
+                if page > self.spider_page_start:
+                    logger.info(
+                        f"{self.spider_name}-指定页码 {page} 大于起始页 {self.spider_page_start}，只抓取指定页")
+                    search_url = self.get_search_url(keyword, page)
+                    results.extend(self._parse_search_result_page(keyword, browser_page, True, ctx))
                     return results
 
-                except Exception as e:
-                    logger.error(f"搜索过程发生错误: {str(e)}, {traceback.format_exc()}")
-                    return []
-                finally:
-                    browser_page.close()
-                    context.close()
-                    browser.close()
+                # 执行搜索
+                search_url = self.get_search_url(keyword, 1)
+                browser_page.goto(search_url)
+                browser_page.wait_for_load_state("networkidle", timeout=30 * 1000)
+                results = self._parse_search_result_page(keyword, browser_page, False, ctx)
+                logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
+                return results
+
+            except Exception as e:
+                logger.error(f"搜索过程发生错误: {str(e)}, {traceback.format_exc()}")
+                return []
+            finally:
+                browser_page.close()
+                context.close()
+                browser.close()
 
         except Exception as e:
             logger.error(f"Playwright 初始化失败: {str(e)} - {traceback.format_exc()}")
@@ -195,6 +165,9 @@ class Bt1louSpider(_ExtendSpiderBase):
                         search_url = self.get_search_url(keyword, current_page)
                         logger.info(f"{self.spider_name}-正在抓取第 {current_page} 页: {search_url}")
                         browser_page.goto(search_url)
+                        if not pass_cloudflare(search_url, browser_page):
+                            logger.warn("cloudflare challenge fail！")
+                            return []
                         self._parse_search_page_detail_urls(browser_page, _processed_titles,
                                                             _processed_urls, detail_urls)
                     except Exception as e:
@@ -220,7 +193,6 @@ class Bt1louSpider(_ExtendSpiderBase):
         # 获取页面内容
         content = browser_page.content()
         soup = BeautifulSoup(content, "html.parser")
-
         for result in soup.find_all("li", class_="media thread tap"):
             # 不是磁力或者种子的链接
             if not result.find("div", class_="subject break-all").find("i", class_="icon small filetype other"):
@@ -255,59 +227,30 @@ class Bt1louSpider(_ExtendSpiderBase):
 
         def process_url_batch(url_batch, index):
             try:
-                with sync_playwright() as playwright:
-                    browser = playwright.chromium.launch(
-                        headless=True,
-                        args=[
-                            '--disable-blink-features=AutomationControlled',
-                            '--disable-features=IsolateOrigins,site-per-process',
-                            '--disable-site-isolation-trials',
-                            '--no-sandbox',
-                            '--disable-setuid-sandbox',
-                            '--disable-dev-shm-usage',
-                            '--disable-accelerated-2d-canvas',
-                            '--no-first-run',
-                            '--no-zygote',
-                            '--disable-gpu'
-                        ]
-                    )
-                    context = browser.new_context(
-                        user_agent=settings.USER_AGENT,
-                        proxy=settings.PROXY_SERVER if self.spider_proxy else None,
-                        viewport={'width': 1920, 'height': 1080},
-                        locale='zh-CN',
-                        timezone_id='Asia/Shanghai',
-                        device_scale_factor=1,
-                        has_touch=False,
-                        is_mobile=False,
-                        java_script_enabled=True,
-                        ignore_https_errors=True,
-                        permissions=['geolocation']
-                    )
-                    if self.spider_cookie:
-                        context.add_cookies(self.spider_cookie)
-                    detail_page = context.new_page()
-                    stealth_sync(detail_page)
+                browser, context = create_browser(self.spider_proxy)
+                if self.spider_cookie:
+                    context.add_cookies(self.spider_cookie)
+                detail_page = create_stealth_page(context)
 
-                    current_batch_results = []
-                    try:
-                        for url_idx, detail_url in enumerate(url_batch):
-                            self._wait()  # 每个URL处理前等待
+                current_batch_results = []
+                try:
+                    for url_idx, detail_url in enumerate(url_batch):
+                        self._wait()  # 每个URL处理前等待
+                        logger.info(
+                            f"{self.spider_name}-线程 {index} 正在处理第 {url_idx + 1}/{len(url_batch)} 个详情页: {detail_url}")
+
+                        state, torrent_list = self._get_torrent_info(
+                            _processed_torrent_titles, detail_url, detail_page
+                        )
+                        if state:
+                            current_batch_results.extend(torrent_list)
                             logger.info(
-                                f"{self.spider_name}-线程 {index} 正在处理第 {url_idx + 1}/{len(url_batch)} 个详情页: {detail_url}")
-
-                            state, torrent_list = self._get_torrent_info(
-                                _processed_torrent_titles, detail_url, detail_page
-                            )
-                            if state:
-                                current_batch_results.extend(torrent_list)
-                                logger.info(
-                                    f"{self.spider_name}-线程 {index} 成功获取第 {url_idx + 1}/{len(url_batch)} 个详情页的种子信息: {len(torrent_list)} 个")
-                    finally:
-                        detail_page.close()
-                        context.close()
-                        browser.close()
-                    return current_batch_results
+                                f"{self.spider_name}-线程 {index} 成功获取第 {url_idx + 1}/{len(url_batch)} 个详情页的种子信息: {len(torrent_list)} 个")
+                finally:
+                    detail_page.close()
+                    context.close()
+                    browser.close()
+                return current_batch_results
             except Exception as ex:
                 logger.error(f"{self.spider_name}-线程 {index} 处理批次失败: {str(ex)}")
                 return []
@@ -398,9 +341,9 @@ if __name__ == "__main__":
         'proxy_type': 'playwright',
         'spider_enable': True,
         'proxy_config': {
-            'flaresolverr_url': 'http://192.168.68.116:8191'
+            'flaresolverr_url': 'http://192.168.68.115:8191'
         },
         'request_interval': (2, 5)  # 设置随机请求间隔，最小2秒，最大5秒
     })
     # 使用直接请求
-    lou.search("藏海传", 1)
+    lou.search("师兄啊师兄", 1)

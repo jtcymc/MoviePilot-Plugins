@@ -4,16 +4,15 @@ from typing import Tuple, Optional, Dict
 
 from bs4 import BeautifulSoup
 from app.log import logger
-from app.core.config import settings
-from plugins.extendspider.plugins.base import _ExtendSpiderBase
+from app.plugins.extendspider.plugins.base import _ExtendSpiderBase
 from app.plugins.extendspider.utils.url import pass_cloudflare
-from playwright.sync_api import sync_playwright, Page
+from app.plugins.extendspider.utils.browser import create_browser, create_stealth_page
+from playwright.sync_api import Page
 from app.schemas import SearchContext, TorrentInfo
-from playwright_stealth import stealth_sync
 
 from app.helper.search_filter import SearchFilterHelper
 from app.utils.common import retry
-from utils.string import StringUtils
+from app.utils.string import StringUtils
 
 
 class BtBtlSpider(_ExtendSpiderBase):
@@ -37,65 +36,36 @@ class BtBtlSpider(_ExtendSpiderBase):
 
         results = []
         try:
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(
-                    headless=True,
-                    args=[
-                        '--disable-blink-features=AutomationControlled',
-                        '--disable-features=IsolateOrigins,site-per-process',
-                        '--disable-site-isolation-trials',
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-accelerated-2d-canvas',
-                        '--no-first-run',
-                        '--no-zygote',
-                        '--disable-gpu'
-                    ]
-                )
-                context = browser.new_context(
-                    user_agent=settings.USER_AGENT,
-                    proxy=settings.PROXY_SERVER if self.spider_proxy else None,
-                    viewport={'width': 1920, 'height': 1080},
-                    locale='zh-CN',
-                    timezone_id='Asia/Shanghai',
-                    device_scale_factor=1,
-                    has_touch=False,
-                    is_mobile=False,
-                    java_script_enabled=True,
-                    ignore_https_errors=True,
-                    permissions=['geolocation']
-                )
-                browser_page = context.new_page()
-                stealth_sync(browser_page)
+            browser, context = create_browser(self.spider_proxy)
+            browser_page = create_stealth_page(context)
 
-                try:
-                    # 访问主页并处理 Cloudflare
-                    logger.info(f"{self.spider_name}-正在访问 {self.spider_url}...")
-                    if not pass_cloudflare(self.spider_url, browser_page):
-                        logger.warn("cloudflare challenge fail！")
-                        return []
-                    # 等待页面加载完成
-                    browser_page.wait_for_load_state("networkidle", timeout=15 * 1000)
-                    logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
-                    self._wait()
-                    self.spider_cookie = context.cookies()
-                    # 执行搜索
-                    browser_page.fill("#txtKeywords", keyword)
-                    browser_page.click("button[type='submit'].search-go")
-                    browser_page.wait_for_load_state("networkidle", timeout=30 * 1000)
-                    logger.info(f"{self.spider_name}-搜索完成，开始解析结果...")
-                    results = self._parse_search_result(keyword, browser_page, ctx)
-                    logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
-                    return results
-
-                except Exception as e:
-                    logger.error(f"{self.spider_name}-搜索过程发生错误: {str(e)}")
+            try:
+                # 访问主页并处理 Cloudflare
+                logger.info(f"{self.spider_name}-正在访问 {self.spider_url}...")
+                if not pass_cloudflare(self.spider_url, browser_page):
+                    logger.warn("cloudflare challenge fail！")
                     return []
-                finally:
-                    browser_page.close()
-                    context.close()
-                    browser.close()
+                # 等待页面加载完成
+                browser_page.wait_for_load_state("networkidle", timeout=15 * 1000)
+                logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
+                self._wait()
+                self.spider_cookie = context.cookies()
+                # 执行搜索
+                browser_page.fill("#txtKeywords", keyword)
+                browser_page.click("button[type='submit'].search-go")
+                browser_page.wait_for_load_state("networkidle", timeout=30 * 1000)
+                logger.info(f"{self.spider_name}-搜索完成，开始解析结果...")
+                results = self._parse_search_result(keyword, browser_page, ctx)
+                logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
+                return results
+
+            except Exception as e:
+                logger.error(f"{self.spider_name}-搜索过程发生错误: {str(e)}")
+                return []
+            finally:
+                browser_page.close()
+                context.close()
+                browser.close()
 
         except Exception as e:
             logger.error(f"Playwright 初始化失败: {str(e)}")
@@ -181,57 +151,28 @@ class BtBtlSpider(_ExtendSpiderBase):
 
         def process_url_batch(url_batch, index):
             try:
-                with sync_playwright() as playwright:
-                    browser = playwright.chromium.launch(
-                        headless=True,
-                        args=[
-                            '--disable-blink-features=AutomationControlled',
-                            '--disable-features=IsolateOrigins,site-per-process',
-                            '--disable-site-isolation-trials',
-                            '--no-sandbox',
-                            '--disable-setuid-sandbox',
-                            '--disable-dev-shm-usage',
-                            '--disable-accelerated-2d-canvas',
-                            '--no-first-run',
-                            '--no-zygote',
-                            '--disable-gpu'
-                        ]
-                    )
-                    context = browser.new_context(
-                        user_agent=settings.USER_AGENT,
-                        proxy=settings.PROXY_SERVER if self.spider_proxy else None,
-                        viewport={'width': 1920, 'height': 1080},
-                        locale='zh-CN',
-                        timezone_id='Asia/Shanghai',
-                        device_scale_factor=1,
-                        has_touch=False,
-                        is_mobile=False,
-                        java_script_enabled=True,
-                        ignore_https_errors=True,
-                        permissions=['geolocation']
-                    )
-                    if self.spider_cookie:
-                        context.add_cookies(self.spider_cookie)
-                    detail_page = context.new_page()
-                    stealth_sync(detail_page)
+                browser, context = create_browser(self.spider_proxy)
+                if self.spider_cookie:
+                    context.add_cookies(self.spider_cookie)
+                detail_page = create_stealth_page(context)
 
-                    current_batch_results = []
-                    try:
-                        for url_idx, down_url in enumerate(url_batch):
-                            self._wait()  # 每个URL处理前等待
+                current_batch_results = []
+                try:
+                    for url_idx, down_url in enumerate(url_batch):
+                        self._wait()  # 每个URL处理前等待
+                        logger.info(
+                            f"{self.spider_name}-线程 {index} 正在处理第 {url_idx + 1}/{len(url_batch)} 个下载页: {down_url}")
+
+                        state, data = self._parse_torrent(down_url, detail_page)
+                        if state and data:
+                            current_batch_results.append(data)
                             logger.info(
-                                f"{self.spider_name}-线程 {index} 正在处理第 {url_idx + 1}/{len(url_batch)} 个下载页: {down_url}")
-
-                            state, data = self._parse_torrent(down_url, detail_page)
-                            if state and data:
-                                current_batch_results.append(data)
-                                logger.info(
-                                    f"{self.spider_name}-线程 {index} 成功获取第 {url_idx + 1}/{len(url_batch)} 个下载页的种子信息")
-                    finally:
-                        detail_page.close()
-                        context.close()
-                        browser.close()
-                    return current_batch_results
+                                f"{self.spider_name}-线程 {index} 成功获取第 {url_idx + 1}/{len(url_batch)} 个下载页的种子信息")
+                finally:
+                    detail_page.close()
+                    context.close()
+                    browser.close()
+                return current_batch_results
             except Exception as ex:
                 logger.error(f"{self.spider_name}-线程 {index} 处理批次失败: {str(ex)}")
                 return []
@@ -265,45 +206,16 @@ class BtBtlSpider(_ExtendSpiderBase):
     def _parse_torrent(self, down_url: str, detail_page: Page = None) -> Tuple[bool, Optional[dict]]:
         try:
             if not detail_page:
-                with sync_playwright() as playwright:
-                    browser = playwright.chromium.launch(
-                        headless=True,
-                        args=[
-                            '--disable-blink-features=AutomationControlled',
-                            '--disable-features=IsolateOrigins,site-per-process',
-                            '--disable-site-isolation-trials',
-                            '--no-sandbox',
-                            '--disable-setuid-sandbox',
-                            '--disable-dev-shm-usage',
-                            '--disable-accelerated-2d-canvas',
-                            '--no-first-run',
-                            '--no-zygote',
-                            '--disable-gpu'
-                        ]
-                    )
-                    context = browser.new_context(
-                        user_agent=settings.USER_AGENT,
-                        proxy=settings.PROXY_SERVER if self.spider_proxy else None,
-                        viewport={'width': 1920, 'height': 1080},
-                        locale='zh-CN',
-                        timezone_id='Asia/Shanghai',
-                        device_scale_factor=1,
-                        has_touch=False,
-                        is_mobile=False,
-                        java_script_enabled=True,
-                        ignore_https_errors=True,
-                        permissions=['geolocation']
-                    )
-                    if self.spider_cookie:
-                        context.add_cookies(self.spider_cookie)
-                    detail_page = context.new_page()
-                    stealth_sync(detail_page)
-                    try:
-                        return self._parse_torrent_content(down_url, detail_page)
-                    finally:
-                        detail_page.close()
-                        context.close()
-                        browser.close()
+                browser, context = create_browser(self.spider_proxy)
+                if self.spider_cookie:
+                    context.add_cookies(self.spider_cookie)
+                detail_page = create_stealth_page(context)
+                try:
+                    return self._parse_torrent_content(down_url, detail_page)
+                finally:
+                    detail_page.close()
+                    context.close()
+                    browser.close()
             else:
                 return self._parse_torrent_content(down_url, detail_page)
         except Exception as e:
