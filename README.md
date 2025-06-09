@@ -1,5 +1,5 @@
 # MoviePilot 插件
-
+![Alt](https://repobeats.axiom.co/api/embed/9edb5f934bb2d49e463ce4b0962615656e8ea10b.svg "Repobeats analytics image")
 > **免责声明**  
 > 本项目及其插件仅供学习与交流使用，严禁用于任何商业或非法用途。请遵守当地法律法规，因使用本项目产生的任何后果由使用者自行承担。
 
