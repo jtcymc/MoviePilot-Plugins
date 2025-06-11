@@ -55,12 +55,12 @@ spider_configs = \
                            'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                            },
         "Bt0lSpider": {'spider_name': 'Bt0lSpider',
-                           'spider_enable': True,
-                           'spider_proxy': False,
-                           'proxy_type': 'playwright',
-                           'spider_desc': '不太灵-影视管理系统',
-                           'plugin_name': 'ExtendSpider'  # 必须和插件名一致
-                           },
+                       'spider_enable': True,
+                       'spider_proxy': False,
+                       'proxy_type': 'playwright',
+                       'spider_desc': '不太灵-影视管理系统',
+                       'plugin_name': 'ExtendSpider'  # 必须和插件名一致
+                       },
     }
 
 
@@ -70,9 +70,9 @@ class ExtendSpider(_PluginBase):
     # 插件描述
     plugin_desc = "以插件的方式获取索引器信息，支持更多的站点（app/sites/site_indexer.py和app/sites/sites.py的支持）"
     # 插件图标
-    plugin_icon = "Extend_Spider.png"
+    plugin_icon = "ExtendSpider.png"
     # 插件版本
-    plugin_version = "1.2.3"
+    plugin_version = "1.2.4"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -109,6 +109,7 @@ class ExtendSpider(_PluginBase):
         # 停止现有任务
         self.stop_service()
         self._spider_helper = SpiderHelper(self._spider_config)
+        self.get_status()
         # 启动定时任务 & 立即运行一次
         # self._scheduler = BackgroundScheduler(timezone=settings.TZ)
         # 初始化定时任务
@@ -190,7 +191,8 @@ class ExtendSpider(_PluginBase):
 
     @cached(cache=TTLCache(maxsize=200, ttl=1 * 3600),
             key=lambda self, indexer, keyword, page, search_context=None: (indexer.get("id"), keyword, page,
-                                                                           hash(f"{search_context.search_type}{search_context.search_sub_id}{search_context.media_info.title} ") if search_context else None))
+                                                                           hash(
+                                                                               f"{search_context.search_type}{search_context.search_sub_id}{search_context.media_info.title} ") if search_context else None))
     def search(self, indexer, keyword, page, search_context: Optional[SearchContext] = None):
         """
         根据关键字多线程检索
@@ -266,6 +268,10 @@ class ExtendSpider(_PluginBase):
                     {
                         'component': 'td',
                         'text': spider.get("name", "")
+                    },
+                    {
+                        'component': 'td',
+                        'text': spider.get("url", "")
                     },
                     {
                         'component': 'td',
@@ -362,6 +368,13 @@ class ExtendSpider(_PluginBase):
                                                                     'class': 'text-start ps-4'
                                                                 },
                                                                 'text': '爬虫名称'
+                                                            },
+                                                            {
+                                                                'component': 'th',
+                                                                'props': {
+                                                                    'class': 'text-start ps-4'
+                                                                },
+                                                                'text': '网址'
                                                             },
                                                             {
                                                                 'component': 'th',

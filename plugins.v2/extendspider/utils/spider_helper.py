@@ -164,6 +164,7 @@ class SpiderHelper(metaclass=SingletonClass):
             config = self._presets_spider_config.get(spider_name, {})
             status_list.append({
                 "name": spider_name,
+                "url": config.get("url", ""),
                 "enable": config.get("spider_enable", False),
                 "desc": config.get("spider_desc", ""),
                 "web_status": spider.spider_web_status
