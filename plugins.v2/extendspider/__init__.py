@@ -54,6 +54,13 @@ spider_configs = \
                            'spider_desc': '电影天堂_电影下载_高清首发',
                            'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                            },
+        "Bt0lSpider": {'spider_name': 'Bt0lSpider',
+                           'spider_enable': True,
+                           'spider_proxy': False,
+                           'proxy_type': 'playwright',
+                           'spider_desc': '不太灵-影视管理系统',
+                           'plugin_name': 'ExtendSpider'  # 必须和插件名一致
+                           },
     }
 
 
@@ -63,9 +70,9 @@ class ExtendSpider(_PluginBase):
     # 插件描述
     plugin_desc = "以插件的方式获取索引器信息，支持更多的站点（app/sites/site_indexer.py和app/sites/sites.py的支持）"
     # 插件图标
-    plugin_icon = "ExtendSpider.png"
+    plugin_icon = "Extend_Spider.png"
     # 插件版本
-    plugin_version = "1.2.2"
+    plugin_version = "1.2.3"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页

@@ -97,34 +97,26 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
 
         if proxy_type == "playwright":
             logger.info(f"{self.spider_name}-初始化代理类型: playwright")
-            self.spider_proxy_client = {
-                "type": "playwright",
-                "config": proxy_config
-            }
             # 设置事件循环策略
             if sys.platform == 'win32':
                 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
                 # 设置环境变量
                 os.environ["PYTHONASYNCIODEBUG"] = "0"
                 os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
+        if self.spider_proxy:
+            # 初始化代理
+            proxy_config = {
+                'proxy_type': 'flaresolverr',
+                'flaresolverr_url': settings.FLARESOLVERR_URL,
+                'session_id': f"moviepilot_{self.spider_name}"
+            }
         else:
-            if self.spider_proxy:
-                # 初始化代理
-                proxy_config = {
-                    'proxy_type': 'flaresolverr',
-                    'flaresolverr_url': settings.FLARESOLVERR_URL,
-                    # 'request_interval': self.spider_request_interval,
-                    'session_id': f"moviepilot_{self.spider_name}"
-                }
-            else:
-                proxy_config = {
-                    'proxy_type': 'direct',
-                    # 'request_interval': self.spider_request_interval
-                }
-
-            self.spider_proxy_client = ProxyFactory.create_proxy(headers=self.spider_headers,
-                                                                 **proxy_config)
-            logger.info(f"{self.spider_name}-初始化代理类型: {proxy_config.get('proxy_type')}, 配置: {proxy_config}")
+            proxy_config = {
+                'proxy_type': 'direct',
+            }
+        self.spider_proxy_client = ProxyFactory.create_proxy(headers=self.spider_headers,
+                                                             **proxy_config)
+        logger.info(f"{self.spider_name}-初始化代理类型: {proxy_config.get('proxy_type')}, 配置: {proxy_config}")
         # 初始化过滤
         self.search_helper = SearchFilterHelper()
         # 初始化线程锁
@@ -262,7 +254,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         :param search_context:  搜索上下文
         :return: 匹配的种子资源列表
         """
-        state, result = self._pre_search_check(keyword, context=search_context)
+        state, result, search_context = self._pre_search_check(keyword, context=search_context)
         if not state:
             return result
         logger.info(f"{self.spider_name}-开始搜索 检索词: {keyword} ")
@@ -270,7 +262,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
 
         return self._do_search(keyword, page=new_page, ctx=search_context)
 
-    def _pre_search_check(self, keyword: str, context: SearchContext) -> Tuple[bool, list]:
+    def _pre_search_check(self, keyword: str, context: SearchContext) -> Tuple[bool, list, SearchContext]:
         """
         预检搜索
         :param keyword: 搜索关键词
@@ -280,26 +272,26 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         # 检查是否启用
         if not self.get_enable():
             logger.warn(f"爬虫 {self.spider_name}-已被禁用/或网站连通测试失败，请检查配置！")
-            return False, []
+            return False, [], context
         # 检查是否触发限速
         state, _ = self.check_ratelimit()
         if state:
-            return False, []
+            return False, [], context
         # 是否是直接 获取种子资源
         if self.support_browse:
             logger.info(f"{self.spider_name}-开始浏览,获取种子资源")
-            return False, self.browse()
+            return False, self.browse(), context
         # 检查关键词
         if not keyword:
             logger.warning("搜索关键词为空")
-            return False, []
+            return False, [], context
         if not context:
             context = SearchContext()
         # 校验是否是imdbid搜索
         if context.area == "imdbid" and self.support_imdb_id:
             logger.info(f"{self.spider_name}-开始通过imdb_id搜索 imdb_id: {keyword} ")
-            return False, self.search_by_imdb_id(keyword)
-        return True, []
+            return False, self.search_by_imdb_id(keyword), context
+        return True, [], context
 
     @abstractmethod
     def _do_search(self, keyword: str, page: int, ctx: SearchContext):
@@ -324,6 +316,11 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
             logger.info(f"{self.spider_name}-获取种子信息成功: {link_str} 返回信息: {ret}")
             return ret['size']
         return None
+
+    # 将URL列表分成多个批次
+    @staticmethod
+    def chunk_list(lst: list, chunk_size: int):
+        return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
 
     def get_link_size(self, results: list):
         if not results:

@@ -1,20 +1,24 @@
-from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
+from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
+from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, ViewportSize
 from app.core.config import settings
 from playwright_stealth import stealth_sync
 
-def create_browser(proxy: bool = False) -> tuple[Browser, BrowserContext]:
+
+def create_browser(proxy: bool = False, headless: bool = True) -> tuple[Browser, BrowserContext]:
     """
     创建浏览器实例和上下文
     
     Args:
         proxy: 是否使用代理
+        headless: 无头模式
         
     Returns:
         tuple[Browser, BrowserContext]: 浏览器实例和上下文
     """
     playwright = sync_playwright().start()
     browser = playwright.chromium.launch(
-        headless=True,
+        headless=headless,
+        slow_mo=60,
         args=[
             '--disable-blink-features=AutomationControlled',
             '--disable-features=IsolateOrigins,site-per-process',
@@ -25,14 +29,18 @@ def create_browser(proxy: bool = False) -> tuple[Browser, BrowserContext]:
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--disable-gpu'
+            '--disable-gpu',
+            '--disable-software-rasterize',
+            '--enable-javascript',
+            '--enable-scripts',
+            '--enable-javascript-harmony'
         ]
     )
-    
+
     context = browser.new_context(
         user_agent=settings.USER_AGENT,
         proxy=settings.PROXY_SERVER if proxy else None,
-        viewport={'width': 1920, 'height': 1080},
+        viewport=ViewportSize({'width': 1920, 'height': 1080}),
         locale='zh-CN',
         timezone_id='Asia/Shanghai',
         device_scale_factor=1,
@@ -40,15 +48,18 @@ def create_browser(proxy: bool = False) -> tuple[Browser, BrowserContext]:
         is_mobile=False,
         java_script_enabled=True,
         ignore_https_errors=True,
-        permissions=['geolocation'],
-        extra_http_headers={
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive"
-        },
     )
-    
+
+    context.add_init_script("""
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh'] });
+        Object.defineProperty(navigator, 'platform', { get: () => 'Linux armv8l' });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+    """)
+
     return browser, context
+
 
 def create_stealth_page(context: BrowserContext) -> Page:
     """
@@ -62,4 +73,30 @@ def create_stealth_page(context: BrowserContext) -> Page:
     """
     page = context.new_page()
     stealth_sync(page)
-    return page 
+    return page
+
+
+def create_drission_chromium(proxy: bool = False, headless: bool = True) -> Chromium:
+    """
+    创建带有反检测功能的页面
+
+    Args:
+        proxy: 是否使用代理
+        headless: 无头模式
+
+    Returns:
+        ChromiumPage: 页面实例
+    """
+    co = ChromiumOptions()
+    co.headless(headless)
+    # 设置代理
+    if proxy:
+        co.set_proxy(settings.PROXY_HOST)
+    # 匿名模式
+    co.incognito()
+    co.set_user_agent(settings.USER_AGENT)
+    # 无沙盒模式
+    co.set_argument('--no-sandbox')
+    # 禁用gpu，提高加载速度
+    co.set_argument('--disable-gpu')
+    return Chromium(co)
