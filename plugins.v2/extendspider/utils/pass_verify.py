@@ -11,8 +11,8 @@ def is_slider_verification_page(html: str) -> bool:
     :return: 如果页面包含特定的验证码标识，则返回True，否则返回False
     """
     return (
-            'GOEDGE_WAF_CAPTCHA_ID' in html and
-            'ui-handler' in html and
+            ('GOEDGE_WAF_CAPTCHA_ID' in html and
+             'ui-handler' in html) or
             '滑动上面方块到右侧解锁' in html
     )
 
