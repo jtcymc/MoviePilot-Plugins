@@ -108,6 +108,8 @@ class ExtendSpider(_PluginBase):
         # 停止现有任务
         self.stop_service()
         self._spider_helper = SpiderHelper(self._spider_config)
+        if not self._spider_helper.running_spiders:
+            self._spider_helper.init_config()
         self.get_status()
         # 启动定时任务 & 立即运行一次
         # self._scheduler = BackgroundScheduler(timezone=settings.TZ)
