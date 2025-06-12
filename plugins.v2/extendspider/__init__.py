@@ -14,24 +14,21 @@ spider_configs = \
         "Bt1louSpider": {'spider_name': 'Bt1louSpider',
                          'spider_enable': True,
                          'spider_proxy': False,
-                         'pass_cloud_flare':True,
+                         'pass_cloud_flare': True,
                          'proxy_type': 'playwright',
                          'spider_desc': 'BT之家1LOU站-回归初心，追求极简',
-                         'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                          },
         "BtBtlSpider": {'spider_name': 'BtBtlSpider',
                         'spider_enable': True,
                         'spider_proxy': False,
                         'proxy_type': 'playwright',
                         'spider_desc': 'BT影视_4k高清电影BT下载_蓝光迅雷电影下载_最新电视剧下载',
-                        'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                         },
         "BtBuLuoSpider": {'spider_name': 'BtBuLuoSpider',
                           'spider_enable': True,
                           'spider_proxy': False,
                           'proxy_type': 'playwright',
                           'spider_desc': 'BT部落天堂 - 注重体验与质量的影视资源下载网站',
-                          'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                           },
 
         "BtdxSpider": {'spider_name': 'BtdxSpider',
@@ -39,29 +36,41 @@ spider_configs = \
                        'spider_proxy': False,
                        'proxy_type': 'playwright',
                        'spider_desc': '比特大雄_BT电影天堂_最新720P、1080P高清电影BT种子免注册下载网站',
-                       'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                        },
         "BtttSpider": {'spider_name': 'BtttSpider',
                        'spider_enable': True,
                        'spider_proxy': False,
                        'proxy_type': 'playwright',
                        'spider_desc': 'BT天堂 - 2025最新高清电影1080P|2160P|4K资源免费下载',
-                       'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                        },
         "Dytt8899Spider": {'spider_name': 'Dytt8899Spider',
                            'spider_enable': True,
                            'spider_proxy': False,
                            'proxy_type': 'playwright',
                            'spider_desc': '电影天堂_电影下载_高清首发',
-                           'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                            },
         "Bt0lSpider": {'spider_name': 'Bt0lSpider',
                        'spider_enable': True,
                        'spider_proxy': False,
                        'proxy_type': 'playwright',
                        'spider_desc': '不太灵-影视管理系统',
-                       'plugin_name': 'ExtendSpider'  # 必须和插件名一致
                        },
+        "CiLiXiongSpider": {'spider_name': 'CiLiXiongSpider',
+                            'spider_enable': True,
+                            'spider_proxy': False,
+                            'pass_cloud_flare': True,
+                            'proxy_type': 'playwright',
+                            'spider_desc': '磁力熊，支持完结影视',
+                            },
+        "GyingKSpider": {'spider_name': 'GyingKSpider',
+                         'spider_enable': True,
+                         'spider_proxy': False,
+                         'pass_cloud_flare': False,
+                         'proxy_type': 'playwright',
+                         'spider_desc': '观影 GYING',
+                         'spider_username': '',
+                         'spider_password': '',
+                         },
     }
 
 
@@ -73,7 +82,7 @@ class ExtendSpider(_PluginBase):
     # 插件图标
     plugin_icon = "ExtendSpider.png"
     # 插件版本
-    plugin_version = "1.3.1"
+    plugin_version = "1.4"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -104,28 +113,22 @@ class ExtendSpider(_PluginBase):
             self._enabled = config.get("enabled")
             self._onlyonce = config.get("onlyonce")
             self._cron = config.get("cron")
-        self._spider_config = copy(spider_configs)
+            self._spider_config = config.get("spider_config")
+        else:
+            self._spider_config = copy(spider_configs)
         # 停止现有任务
         self.stop_service()
         self._spider_helper = SpiderHelper(self._spider_config)
-        if not self._spider_helper.running_spiders:
-            self._spider_helper.init_config()
-        self.get_status()
-        # 启动定时任务 & 立即运行一次
-        # self._scheduler = BackgroundScheduler(timezone=settings.TZ)
-        # 初始化定时任务
-        # if self._enabled:
-        # if self._scheduler:
-        #     self._scheduler.remove_all_jobs()
-        # if self._cron:
-        #     self._scheduler.add_job(self.__update_spider_status, CronTrigger.from_crontab(self._cron))
-        #     logger.info(f"爬虫状态更新任务已启动，执行周期：{self._cron}")
+        self.reload_config()
 
-        # # 立即执行一次
-        # if self._onlyonce:
-        #     self.__update_spider_status()
-        #     self._onlyonce = False
-        #     self.__update_config()
+    def reload_config(self):
+        """
+        重新加载配置
+        """
+        self._spider_helper.spider_config = self._spider_config
+        self._spider_helper.init_config()
+        self.get_status()
+        self.__update_config()
 
     def __update_spider_status(self):
         """
@@ -176,6 +179,7 @@ class ExtendSpider(_PluginBase):
         更新插件配置
         """
         self.update_config({
+            "enabled": self._enabled,
             "onlyonce": False,
             "cron": self._cron,
             "spider_config": self._spider_config
@@ -222,6 +226,24 @@ class ExtendSpider(_PluginBase):
                 "endpoint": self.__toggle_spider,
                 "methods": ["POST"],
                 "summary": "启用/停止爬虫"
+            },
+            {
+                "path": "/edit_config",
+                "endpoint": self.__edit_config,
+                "methods": ["POST"],
+                "summary": "编辑爬虫配置"
+            },
+            {
+                "path": "/reset_config",
+                "endpoint": self.__reset_config,
+                "methods": ["POST"],
+                "summary": "重置爬虫配置"
+            },
+            {
+                "path": "/reset_all_config",
+                "endpoint": self.__reset_all_config,
+                "methods": ["POST"],
+                "summary": "重置所有爬虫配置"
             }
         ]
 
@@ -232,25 +254,84 @@ class ExtendSpider(_PluginBase):
         :return: 操作结果
         """
         try:
-            if not self._spider_helper:
-                return {"success": False, "message": "爬虫助手未初始化"}
-            enable = self._spider_helper.spider_config[spider_name]['spider_enable']
-            # 更新配置
-            if spider_name in self._spider_helper.spider_config:
-                self._spider_helper.spider_config[spider_name]['spider_enable'] = not enable
+            if not self._spider_config:
+                return {"success": False, "message": "爬虫配置未初始化"}
 
-                # 重启爬虫
-                if enable:
-                    self._spider_helper.load_spiders(spider_name)
-                else:
-                    self._spider_helper.remove_plugin(spider_name)
-
+            if spider_name in self._spider_config:
+                # 更新配置
+                enable = self._spider_config[spider_name]['spider_enable']
+                self._spider_config[spider_name]['spider_enable'] = not enable
+                # 重新加载配置
+                self.reload_config()
                 return {"success": True, "message": f"爬虫 {spider_name} {'启用' if enable else '停止'}成功"}
             else:
                 return {"success": False, "message": f"爬虫 {spider_name} 不存在"}
         except Exception as e:
             logger.error(f"操作爬虫 {spider_name} 失败：{str(e)}")
             return {"success": False, "message": f"操作失败：{str(e)}"}
+
+    def __edit_config(self, spider_name: str, config: dict) -> Dict[str, Any]:
+        """
+        编辑爬虫配置
+        :param spider_name: 爬虫名称
+        :param config: 新的配置
+        :return: 操作结果
+        """
+        try:
+            if not self._spider_helper:
+                return {"success": False, "message": "爬虫助手未初始化"}
+
+            if spider_name in self._spider_helper.spider_config:
+                # 更新配置
+                self._spider_helper.spider_config[spider_name].update(config)
+                # 保存配置
+                self.reload_config()
+                return {"success": True, "message": f"爬虫 {spider_name} 配置更新成功"}
+            else:
+                return {"success": False, "message": f"爬虫 {spider_name} 不存在"}
+        except Exception as e:
+            logger.error(f"更新爬虫 {spider_name} 配置失败：{str(e)}")
+            return {"success": False, "message": f"更新配置失败：{str(e)}"}
+
+    def __reset_config(self, spider_name: str) -> Dict[str, Any]:
+        """
+        重置爬虫配置
+        :param spider_name: 爬虫名称
+        :return: 操作结果
+        """
+        try:
+            if not self._spider_helper:
+                return {"success": False, "message": "爬虫助手未初始化"}
+
+            if spider_name in spider_configs:
+                # 重置为默认配置
+                self._spider_helper.spider_config[spider_name] = copy(spider_configs[spider_name])
+                # 保存配置
+                self.reload_config()
+                return {"success": True, "message": f"爬虫 {spider_name} 配置已重置为默认值"}
+            else:
+                return {"success": False, "message": f"爬虫 {spider_name} 不存在"}
+        except Exception as e:
+            logger.error(f"重置爬虫 {spider_name} 配置失败：{str(e)}")
+            return {"success": False, "message": f"重置配置失败：{str(e)}"}
+
+    def __reset_all_config(self) -> Dict[str, Any]:
+        """
+        重置所有爬虫配置
+        :return: 操作结果
+        """
+        try:
+            if not self._spider_helper:
+                return {"success": False, "message": "爬虫助手未初始化"}
+
+            # 重置所有配置为默认值
+            self._spider_helper.spider_config = copy(spider_configs)
+            # 保存配置
+            self.reload_config()
+            return {"success": True, "message": "所有爬虫配置已重置为默认值"}
+        except Exception as e:
+            logger.error(f"重置所有爬虫配置失败：{str(e)}")
+            return {"success": False, "message": f"重置配置失败：{str(e)}"}
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         """
@@ -263,6 +344,7 @@ class ExtendSpider(_PluginBase):
         spider_items = []
         for spider in spider_status:
             spider_name = spider.get('name')
+            spider_config = self._spider_helper.spider_config[spider_name]
             spider_items.append({
                 'component': 'tr',
                 'content': [
@@ -297,7 +379,6 @@ class ExtendSpider(_PluginBase):
                                         }
                                     }
                                 }
-
                             }
                         ]
                     },
@@ -310,6 +391,47 @@ class ExtendSpider(_PluginBase):
                                     'color': 'success' if spider.get("web_status") else 'error',
                                     'size': 'small',
                                     'text': '正常' if spider.get("web_status") else '异常'
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        'component': 'td',
+                        'content': [
+                            {
+                                'component': 'VBtn',
+                                'props': {
+                                    'color': 'primary',
+                                    'size': 'small',
+                                    'text': '编辑配置'
+                                },
+                                'events': {
+                                    'click': {
+                                        'api': 'plugin/ExtendSpider/edit_config',
+                                        'method': 'post',
+                                        'params': {
+                                            'spider_name': spider_name,
+                                            'config': spider_config
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                'component': 'VBtn',
+                                'props': {
+                                    'color': 'warning',
+                                    'size': 'small',
+                                    'text': '重置配置',
+                                    'class': 'ml-2'
+                                },
+                                'events': {
+                                    'click': {
+                                        'api': 'plugin/ExtendSpider/reset_config',
+                                        'method': 'post',
+                                        'params': {
+                                            'spider_name': spider_name
+                                        }
+                                    }
                                 }
                             }
                         ]
@@ -343,6 +465,29 @@ class ExtendSpider(_PluginBase):
                                             }
                                         ]
                                     },
+                                    {
+                                        'component': 'VCol',
+                                        'props': {
+                                            'cols': 12,
+                                            'md': 4
+                                        },
+                                        'content': [
+                                            {
+                                                'component': 'VBtn',
+                                                'props': {
+                                                    'color': 'error',
+                                                    'text': '重置所有配置',
+                                                    'block': True
+                                                },
+                                                'events': {
+                                                    'click': {
+                                                        'api': 'plugin/ExtendSpider/reset_all_config',
+                                                        'method': 'post'
+                                                    }
+                                                }
+                                            }
+                                        ]
+                                    }
                                 ]
                             },
                             {
@@ -397,6 +542,13 @@ class ExtendSpider(_PluginBase):
                                                                     'class': 'text-start ps-4'
                                                                 },
                                                                 'text': '连通性'
+                                                            },
+                                                            {
+                                                                'component': 'th',
+                                                                'props': {
+                                                                    'class': 'text-start ps-4'
+                                                                },
+                                                                'text': '配置'
                                                             }
                                                         ]
                                                     }

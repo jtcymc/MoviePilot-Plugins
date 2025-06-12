@@ -24,8 +24,6 @@ class Bt0lSpider(_ExtendSpiderBase):
     def init_spider(self, config: dict = None):
         self.spider_url = "https://www.6bt0.com"
         self.spider_search_url = f"{self.spider_url}/search?sb=$key$"
-        self.spider_proxy_client = FlareSolverrProxy(settings.FLARESOLVERR_URL, f"moviepilot_{self.spider_name}")
-
     def get_search_url(self, keyword: str, page: int) -> str:
         if not keyword:
             return ""

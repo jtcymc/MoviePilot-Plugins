@@ -36,7 +36,7 @@ class SpiderHelper(metaclass=SingletonClass):
     @property
     def running_spiders(self):
         return self._extend_running_plugins.values()
-
+    
     @property
     def spiders(self):
         return self._extend_plugins
@@ -44,6 +44,10 @@ class SpiderHelper(metaclass=SingletonClass):
     @property
     def spider_config(self):
         return self._presets_spider_config
+
+    @spider_config.setter
+    def spider_config(self, spider_config):
+        self.spider_config = spider_config
 
     def load_spiders(self, s_name: Optional[str] = None):
         def check_module(module: Any):

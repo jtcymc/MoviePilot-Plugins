@@ -44,8 +44,9 @@ class Bt1louSpider(_ExtendSpiderBase):
             logger.warning(f"{self.spider_name}-搜索关键词为空")
             return []
         results = []
-        logger.info(f"{self.spider_name}-使用flaresolver代理...")
-        self._from_pass_cloud_flare(self.spider_url)
+        if self.pass_cloud_flare:
+            logger.info(f"{self.spider_name}-使用flaresolver代理...")
+            self._from_pass_cloud_flare(self.spider_url)
         browser = create_drission_chromium(headless=True, ua=self.spider_ua)
         if self.spider_cookie:
             browser.set.cookies(self.spider_cookie)
@@ -312,6 +313,7 @@ if __name__ == "__main__":
     lou = Bt1louSpider({
         'spider_name': 'Bt1louSpider',
         'proxy_type': 'playwright',
+        'pass_cloud_flare': True,
         'spider_enable': True,
         'proxy_config': {
             'flaresolverr_url': 'http://192.168.68.115:8191'
