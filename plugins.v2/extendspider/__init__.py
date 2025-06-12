@@ -113,7 +113,7 @@ class ExtendSpider(_PluginBase):
             self._enabled = config.get("enabled")
             self._onlyonce = config.get("onlyonce")
             self._cron = config.get("cron")
-            self._spider_config = config.get("spider_config")
+            self._spider_config = config.get("spider_config") if config.get("spider_config") else copy(spider_configs)
         else:
             self._spider_config = copy(spider_configs)
         # 停止现有任务
