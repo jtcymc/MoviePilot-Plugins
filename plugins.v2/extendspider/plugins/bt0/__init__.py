@@ -5,7 +5,7 @@ from typing import Optional
 
 from DrissionPage import Chromium
 from app.log import logger
-from app.plugins.extendspider.plugins.base import _ExtendSpiderBase
+from plugins.extendspider.plugins.base import _ExtendSpiderBase
 from app.schemas import SearchContext
 from app.utils.common import retry
 from app.core.config import settings
@@ -40,6 +40,8 @@ class Bt0lSpider(_ExtendSpiderBase):
         browser = create_drission_chromium(proxy=self.spider_proxy, headless=True)
         tab1 = browser.latest_tab
         try:
+            tab1.get(self.spider_url)
+            tab1.wait(2)
             if not pass_slider_verification(tab1):
                 logger.warn("cloudflare challenge fail！")
                 return results
