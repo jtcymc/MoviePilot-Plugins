@@ -52,7 +52,6 @@ class Bt1louSpider(_ExtendSpiderBase):
         try:
             browser, context = create_browser(self.spider_proxy)
             browser_page = create_stealth_page(context)
-
             try:
                 # 访问主页并处理 Cloudflare
                 logger.info(f"{self.spider_name}-正在访问 {self.spider_url}...")

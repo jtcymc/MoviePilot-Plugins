@@ -40,7 +40,7 @@
     "name": "ExtendSpider",
     "description": "以插件的方式获取索引器信息，支持更多的站点（需修改app/sites/site_indexer.py和app/sites/sites.py的支持）",
     "labels": "索引器,ExtendSpider",
-    "version": "1.2.4",
+    "version": "1.2.5",
     "icon": "Extend_Spider.png",
     "author": "shaw",
     "level": 1,
@@ -51,7 +51,8 @@
       "v1.2.1": "优化处理逻辑",
       "v1.2.2": "解决过检问题",
       "v1.2.3": "优化处理逻辑。新增DrissionPage适配更多索引器",
-      "v1.2.4": "页面数据优化"
+      "v1.2.4": "页面数据优化",
+      "v1.2.5": "修复驱动问题"
     }
   }
 }

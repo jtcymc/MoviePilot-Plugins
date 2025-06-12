@@ -1,7 +1,11 @@
+import os
+
 from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, ViewportSize
 from app.core.config import settings
 from playwright_stealth import stealth_sync
+
+from app.log import logger
 
 
 def create_browser(proxy: bool = False, headless: bool = True) -> tuple[Browser, BrowserContext]:
@@ -99,4 +103,39 @@ def create_drission_chromium(proxy: bool = False, headless: bool = True) -> Chro
     co.set_argument('--no-sandbox')
     # 禁用gpu，提高加载速度
     co.set_argument('--disable-gpu')
+    path = find_chromium_path()
+    if is_running_in_docker() and path:
+        logger.info(f"使用自定义的 Chromium 路径：{path}")
+        co.set_browser_path(path)
     return Chromium(co)
+
+
+def is_running_in_docker():
+    try:
+        # 方式一：检查特殊文件
+        if os.path.exists('/.dockerenv') or os.path.exists('/run/.containerenv'):
+            return True
+        # 方式二：检查 cgroup 内容
+        with open('/proc/1/cgroup', 'rt') as f:
+            content = f.read()
+            return 'docker' in content or 'kubepods' in content or 'containerd' in content
+    except Exception as _:
+        return False
+
+
+def find_chromium_path():
+    # 优先使用环境变量指定的路径
+    custom_path = os.environ.get("PLAYWRIGHT_CHROMIUM_PATH")
+    if custom_path and os.path.exists(custom_path):
+        return custom_path
+    search_paths = "/moviepilot/.cache/ms-playwright"
+
+    for base in search_paths:
+        if os.path.exists(base):
+            for name in os.listdir(base):
+                if name.startswith("chromium-"):
+                    chromium_path = os.path.join(base, name, "chrome")
+                    if os.path.exists(chromium_path):
+                        return chromium_path
+
+    return None
