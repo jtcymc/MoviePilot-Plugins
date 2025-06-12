@@ -184,6 +184,7 @@ class FlareSolverrProxy(ProxyBase):
                 new_response._content = solution.get("response", "").encode('utf-8')
                 new_response.encoding = 'utf-8'
                 new_response.headers = CaseInsensitiveDict(solution.get("headers", {}))
+                new_response.user_agent = solution.get("userAgent")
                 # 处理cookies
                 cookies_list = solution.get("cookies", [])
                 new_response.cookies = self._parse_cookies(cookies_list)

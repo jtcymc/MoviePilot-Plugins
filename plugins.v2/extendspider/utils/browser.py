@@ -8,7 +8,7 @@ from playwright_stealth import stealth_sync
 from app.log import logger
 
 
-def create_browser(proxy: bool = False, headless: bool = True) -> tuple[Browser, BrowserContext]:
+def create_browser(proxy: bool = False, headless: bool = True, ua=None) -> tuple[Browser, BrowserContext]:
     """
     创建浏览器实例和上下文
 
@@ -42,7 +42,7 @@ def create_browser(proxy: bool = False, headless: bool = True) -> tuple[Browser,
     )
 
     context = browser.new_context(
-        user_agent=settings.USER_AGENT,
+        user_agent=ua or settings.USER_AGENT,
         proxy=settings.PROXY_SERVER if proxy else None,
         viewport=ViewportSize({'width': 1920, 'height': 1080}),
         locale='zh-CN',
@@ -80,13 +80,14 @@ def create_stealth_page(context: BrowserContext) -> Page:
     return page
 
 
-def create_drission_chromium(proxy: bool = False, headless: bool = True) -> Chromium:
+def create_drission_chromium(proxy: bool = False, headless: bool = True, ua=None) -> Chromium:
     """
     创建带有反检测功能的页面
 
     Args:
         proxy: 是否使用代理
         headless: 无头模式
+        ua: 指纹
 
     Returns:
         ChromiumPage: 页面实例
@@ -98,7 +99,7 @@ def create_drission_chromium(proxy: bool = False, headless: bool = True) -> Chro
         co.set_proxy(settings.PROXY_HOST)
     # 匿名模式
     co.incognito()
-    co.set_user_agent(settings.USER_AGENT)
+    co.set_user_agent(ua or settings.USER_AGENT)
     # 无沙盒模式
     co.set_argument('--no-sandbox')
     # 禁用gpu，提高加载速度

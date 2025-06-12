@@ -1,5 +1,5 @@
 from time import sleep
-
+from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright, Page
@@ -7,8 +7,9 @@ from cf_clearance import sync_cf_retry, sync_stealth
 
 from app.core.config import settings
 from app.log import logger
-from app.plugins.extendspider.utils.browser import create_drission_chromium
-from app.plugins.extendspider.utils.pass_verify import pass_cloud_flare_verification
+from plugins.extendspider.utils.browser import create_drission_chromium
+from plugins.extendspider.utils.pass_verify import pass_cloud_flare_verification
+from plugins.extendspider.utils.proxy import FlareSolverrProxy
 
 
 def __pass_cloudflare(url: str, page: Page) -> bool:
@@ -56,12 +57,48 @@ def main():
         logger.error(f"Playwright 初始化失败: {str(e)}")
 
 
+def _get_cookie_and_ua(url: str):
+    spider_proxy_client = FlareSolverrProxy(
+        flaresolverr_url=settings.FLARESOLVERR_URL,
+        session_id="test1"
+    )
+
+    # 发请求获取 cookies
+    response = spider_proxy_client.request('GET', url)
+
+    if not response.cookies:
+        return [], ""
+
+    parsed_url = urlparse(url)
+    domain = parsed_url.hostname
+
+    cookies = []
+    for cookie in response.cookies:
+        cookies.append({
+            "name": cookie.name,
+            "value": cookie.value,
+            "domain": domain,
+            "path": cookie.path or "/",
+            "secure": cookie.secure,
+            "httpOnly": getattr(cookie, "rest", {}).get("HttpOnly", False),
+            "expires": cookie.expires if cookie.expires else -1  # Playwright 允许 -1 表示会话 cookie
+        })
+
+    return cookies, response.user_agent
+
+
 def test_drission_page():
-    browser = create_drission_chromium(headless=False)
+    cookies, ua = _get_cookie_and_ua("https://www.1lou.me/")
+    browser = create_drission_chromium(headless=False, ua=ua)
+    browser.set.cookies(cookies)
     tab1 = browser.latest_tab
     try:
+        tab1.set.cookies(cookies)
+        tab1.set.load_mode.eager()  # 设置加载模式为none
+
         tab1.get("https://www.1lou.me/")
-        tab1.wait(2)
+        # ele = tab1.ele('#search_form', timeout=20)  # 查找text包含“中国日报”的元素
+        # tab1.stop_loading()  # 主动停止加载
         if not pass_cloud_flare_verification(tab1):
             print("验证失败")
             return

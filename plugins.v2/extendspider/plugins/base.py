@@ -5,6 +5,7 @@ import time
 from abc import ABCMeta, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Tuple
+from urllib.parse import urlparse
 
 from app.core.config import settings
 from app.helper.search_filter import SearchFilterHelper
@@ -77,6 +78,8 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         self.spider_desc = config.get("spider_desc")
         self.spider_enable = config.get("spider_enable")
         self.spider_proxy = config.get("spider_proxy")
+        # 跳过cloudflare
+        self.pass_cloud_flare = config.get("pass_cloud_flare", False)
         self.spider_ua = config.get("spider_ua", settings.USER_AGENT)
         self.spider_headers = {
             "User-Agent": settings.USER_AGENT,
@@ -103,7 +106,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
                 # 设置环境变量
                 os.environ["PYTHONASYNCIODEBUG"] = "0"
                 os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
-        if self.spider_proxy:
+        if self.pass_cloud_flare or proxy_type == "flaresolverr":
             # 初始化代理
             proxy_config = {
                 'proxy_type': 'flaresolverr',
@@ -141,11 +144,15 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
                 time.sleep(wait_time - elapsed)
             self._last_request_time = time.time()
 
-    def _wait(self):
-        """等待随机间隔时间"""
+    def _wait(self, min_delay: float = None, max_delay: float = None):
+        """全局单一等待随机间隔时间"""
         with self._request_result_lock:  # 使用请求锁确保间隔时间正确执行
-            delay = random.uniform(*self.spider_request_interval)
+            delay = random.uniform(min_delay, max_delay) if max_delay else random.uniform(*self.spider_request_interval)
             time.sleep(delay)
+    def _wait_inner(self, min_delay: float = None, max_delay: float = None):
+        """等待随机间隔时间"""
+        delay = random.uniform(min_delay, max_delay) if max_delay else random.uniform(*self.spider_request_interval)
+        time.sleep(delay)
 
     def browse(self) -> list:
         """
@@ -338,3 +345,25 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
                 if size:
                     # 更新原始对象
                     result['size'] = size
+
+    def _from_pass_cloud_flare(self, url):
+        # 发请求获取 cookies
+        response = self.spider_proxy_client.request('GET', url)
+        if not response.cookies:
+            return
+        parsed_url = urlparse(url)
+        domain = parsed_url.hostname
+        cookies = []
+        for cookie in response.cookies:
+            cookies.append({
+                "name": cookie.name,
+                "value": cookie.value,
+                "domain": domain,
+                "path": cookie.path or "/",
+                "secure": cookie.secure,
+                "httpOnly": getattr(cookie, "rest", {}).get("HttpOnly", False),
+                "expires": cookie.expires if cookie.expires else -1  # Playwright 允许 -1 表示会话 cookie
+            })
+
+        self.spider_cookie = cookies
+        self.spider_ua = response.user_agent if hasattr(response, "user_agent") else self.spider_ua
