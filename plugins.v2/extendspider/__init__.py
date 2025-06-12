@@ -337,6 +337,7 @@ class ExtendSpider(_PluginBase):
         """
             拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
+        import json
         # 获取爬虫状态
         spider_status = self._spider_helper.get_spider_status() if self._spider_helper else []
 
@@ -350,18 +351,22 @@ class ExtendSpider(_PluginBase):
                 'content': [
                     {
                         'component': 'td',
+                        'props': {'class': 'text-start ps-4'},
                         'text': spider.get("name", "")
                     },
                     {
                         'component': 'td',
+                        'props': {'class': 'text-start ps-4'},
                         'text': spider.get("url", "")
                     },
                     {
                         'component': 'td',
+                        'props': {'class': 'text-start ps-4'},
                         'text': spider.get("desc", "")
                     },
                     {
                         'component': 'td',
+                        'props': {'class': 'text-start ps-4'},
                         'content': [
                             {
                                 'component': 'VSwitch',
@@ -384,6 +389,7 @@ class ExtendSpider(_PluginBase):
                     },
                     {
                         'component': 'td',
+                        'props': {'class': 'text-start ps-4'},
                         'content': [
                             {
                                 'component': 'VBtn',
@@ -397,6 +403,7 @@ class ExtendSpider(_PluginBase):
                     },
                     {
                         'component': 'td',
+                        'props': {'class': 'text-start ps-4'},
                         'content': [
                             {
                                 'component': 'VBtn',
@@ -407,11 +414,22 @@ class ExtendSpider(_PluginBase):
                                 },
                                 'events': {
                                     'click': {
-                                        'api': 'plugin/ExtendSpider/edit_config',
-                                        'method': 'post',
-                                        'params': {
+                                        'dialog': True,
+                                        'dialogTitle': f'编辑 {spider_name} 配置',
+                                        'dialogContent': {
+                                            'component': 'VTextarea',
+                                            'props': {
+                                                'model': f'config_json_{spider_name}',
+                                                'label': '爬虫配置（JSON格式）',
+                                                'rows': 10,
+                                                'value': json.dumps(spider_config, ensure_ascii=False, indent=2)
+                                            }
+                                        },
+                                        'dialogOkApi': 'plugin/ExtendSpider/edit_config',
+                                        'dialogOkMethod': 'post',
+                                        'dialogOkParams': {
                                             'spider_name': spider_name,
-                                            'config': spider_config
+                                            'config': f'{{config_json_{spider_name}}}'
                                         }
                                     }
                                 }
@@ -510,44 +528,32 @@ class ExtendSpider(_PluginBase):
                                                         'content': [
                                                             {
                                                                 'component': 'th',
-                                                                'props': {
-                                                                    'class': 'text-start ps-4'
-                                                                },
+                                                                'props': {'class': 'text-start ps-4'},
                                                                 'text': '爬虫名称'
                                                             },
                                                             {
                                                                 'component': 'th',
-                                                                'props': {
-                                                                    'class': 'text-start ps-4'
-                                                                },
+                                                                'props': {'class': 'text-start ps-4'},
                                                                 'text': '网址'
                                                             },
                                                             {
                                                                 'component': 'th',
-                                                                'props': {
-                                                                    'class': 'text-start ps-4'
-                                                                },
+                                                                'props': {'class': 'text-start ps-4'},
                                                                 'text': '描述'
                                                             },
                                                             {
                                                                 'component': 'th',
-                                                                'props': {
-                                                                    'class': 'text-start ps-4'
-                                                                },
+                                                                'props': {'class': 'text-start ps-4'},
                                                                 'text': '状态'
                                                             },
                                                             {
                                                                 'component': 'th',
-                                                                'props': {
-                                                                    'class': 'text-start ps-4'
-                                                                },
+                                                                'props': {'class': 'text-start ps-4'},
                                                                 'text': '连通性'
                                                             },
                                                             {
                                                                 'component': 'th',
-                                                                'props': {
-                                                                    'class': 'text-start ps-4'
-                                                                },
+                                                                'props': {'class': 'text-start ps-4'},
                                                                 'text': '配置'
                                                             }
                                                         ]
