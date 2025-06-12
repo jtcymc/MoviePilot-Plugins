@@ -104,8 +104,8 @@ def create_drission_chromium(proxy: bool = False, headless: bool = True) -> Chro
     # 禁用gpu，提高加载速度
     co.set_argument('--disable-gpu')
     path = find_chromium_path()
+    logger.info(f"使用自定义的 Chromium 路径：{path}")
     if path:
-        logger.info(f"使用自定义的 Chromium 路径：{path}")
         co.set_browser_path(path)
     return Chromium(co)
 
@@ -117,12 +117,10 @@ def find_chromium_path():
         return custom_path
     search_paths = "/moviepilot/.cache/ms-playwright"
 
-    for base in search_paths:
-        if os.path.exists(base):
-            for name in os.listdir(base):
-                if name.startswith("chromium-"):
-                    chromium_path = os.path.join(base, name, "chrome")
-                    if os.path.exists(chromium_path):
-                        return chromium_path
-
+    if os.path.exists(search_paths):
+        for name in os.listdir(search_paths):
+            if name.startswith("chromium-"):
+                chromium_path = os.path.join(search_paths, name, "chrome")
+                if os.path.exists(chromium_path):
+                    return chromium_path
     return None
