@@ -4,7 +4,7 @@ from typing import List, Any, Optional, Dict, Tuple
 from app.helper.module import ModuleHelper
 from app.log import logger
 from app.utils.singleton import SingletonClass
-from plugins.extendspider.plugins.base import _ExtendSpiderBase
+from app.plugins.extendspider.plugins.base import _ExtendSpiderBase
 from app.schemas import SearchContext
 
 

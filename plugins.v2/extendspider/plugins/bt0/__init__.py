@@ -8,7 +8,7 @@ from app.log import logger
 from app.plugins.extendspider.plugins.base import _ExtendSpiderBase
 from app.schemas import SearchContext
 from app.utils.common import retry
-from core.config import settings
+from app.core.config import settings
 from app.modules.indexer.utils.proxy import FlareSolverrProxy
 from app.plugins.extendspider.utils.browser import create_drission_chromium
 from app.utils.string import StringUtils
@@ -37,7 +37,7 @@ class Bt0lSpider(_ExtendSpiderBase):
             logger.warning(f"{self.spider_name}-搜索关键词为空")
             return results
         #  创建浏览器
-        browser = create_drission_chromium(proxy=self.spider_proxy, headless=False)
+        browser = create_drission_chromium(proxy=self.spider_proxy, headless=True)
         tab1 = browser.latest_tab
         try:
             if not pass_slider_verification(tab1):
