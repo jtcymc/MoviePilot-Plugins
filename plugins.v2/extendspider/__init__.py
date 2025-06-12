@@ -14,6 +14,7 @@ spider_configs = \
         "Bt1louSpider": {'spider_name': 'Bt1louSpider',
                          'spider_enable': True,
                          'spider_proxy': False,
+                         'pass_cloud_flare':True,
                          'proxy_type': 'playwright',
                          'spider_desc': 'BT之家1LOU站-回归初心，追求极简',
                          'plugin_name': 'ExtendSpider'  # 必须和插件名一致
