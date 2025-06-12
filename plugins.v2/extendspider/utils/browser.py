@@ -111,16 +111,13 @@ def create_drission_chromium(proxy: bool = False, headless: bool = True) -> Chro
 
 
 def find_chromium_path():
-    # 优先使用环境变量指定的路径
-    custom_path = os.environ.get("PLAYWRIGHT_CHROMIUM_PATH")
-    if custom_path and os.path.exists(custom_path):
-        return custom_path
     search_paths = "/moviepilot/.cache/ms-playwright"
 
     if os.path.exists(search_paths):
         for name in os.listdir(search_paths):
+            logger.info(f"正在搜索 Chromium 路径：{name}")
             if name.startswith("chromium-"):
-                chromium_path = os.path.join(search_paths, name, "chrome")
+                chromium_path = os.path.join(search_paths, name, "chrome-linux", "chrome")
                 if os.path.exists(chromium_path):
                     return chromium_path
     return None
