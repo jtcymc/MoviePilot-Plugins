@@ -52,7 +52,7 @@ class Bt0lSpider(_ExtendSpiderBase):
             tab1.scroll.to_bottom()
             tab1.get(search_url)
 
-            packet = tab1.listen.wait(timeout=15)
+            packet = tab1.listen.wait(timeout=60)
             if not packet:
                 logger.warn(f"没有搜索到数据，url:【{search_url}】")
                 return results
@@ -122,7 +122,7 @@ class Bt0lSpider(_ExtendSpiderBase):
                 logger.warn(f"详情页:【{down_url}】触发验证,通过校验失败！")
                 return []
             results = []
-            packet = new_tab.listen.wait(1, timeout=20)
+            packet = new_tab.listen.wait(1, timeout=60)
             if not packet:
                 logger.warn(f"详情页:【{down_url}】,没有捕获到数据，url:【{listen_url}】")
                 return []
