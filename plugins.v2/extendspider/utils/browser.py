@@ -11,11 +11,11 @@ from app.log import logger
 def create_browser(proxy: bool = False, headless: bool = True) -> tuple[Browser, BrowserContext]:
     """
     创建浏览器实例和上下文
-    
+
     Args:
         proxy: 是否使用代理
         headless: 无头模式
-        
+
     Returns:
         tuple[Browser, BrowserContext]: 浏览器实例和上下文
     """
@@ -68,10 +68,10 @@ def create_browser(proxy: bool = False, headless: bool = True) -> tuple[Browser,
 def create_stealth_page(context: BrowserContext) -> Page:
     """
     创建带有反检测功能的页面
-    
+
     Args:
         context: 浏览器上下文
-        
+
     Returns:
         Page: 页面实例
     """
@@ -104,23 +104,10 @@ def create_drission_chromium(proxy: bool = False, headless: bool = True) -> Chro
     # 禁用gpu，提高加载速度
     co.set_argument('--disable-gpu')
     path = find_chromium_path()
-    if is_running_in_docker() and path:
+    if path:
         logger.info(f"使用自定义的 Chromium 路径：{path}")
         co.set_browser_path(path)
     return Chromium(co)
-
-
-def is_running_in_docker():
-    try:
-        # 方式一：检查特殊文件
-        if os.path.exists('/.dockerenv') or os.path.exists('/run/.containerenv'):
-            return True
-        # 方式二：检查 cgroup 内容
-        with open('/proc/1/cgroup', 'rt') as f:
-            content = f.read()
-            return 'docker' in content or 'kubepods' in content or 'containerd' in content
-    except Exception as _:
-        return False
 
 
 def find_chromium_path():
