@@ -14,6 +14,7 @@ on:
         description: "An example input"
         required: false
         default: "hello"
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,8 +37,10 @@ jobs:
           rm -rf plugins.v2/extendspider/dist/assets/*
 
       - name: Clone extend-spider component
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          git clone https://github.com/jtcymc/extend-spider-moviepilot-plugin-component.git
+          git clone https://${{ secrets.GH_TOKEN }}@github.com/jtcymc/extend-spider-moviepilot-plugin-component.git
           cd extend-spider-moviepilot-plugin-component
           yarn install
           yarn build
@@ -54,7 +57,9 @@ jobs:
           git config --global user.email 'github-actions@github.com'
 
       - name: Commit and push changes
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           git add plugins.v2/extendspider/dist/assets/
           git commit -m "chore: update extend-spider federation files [skip ci]"
-          git push
+          git push https://${{ secrets.GH_TOKEN }}@github.com/${{ github.repository }}.git
