@@ -54,15 +54,35 @@ jobs:
           # 显示构建后的文件
           echo "Built files in component:"
           ls -la dist/assets/
+          cd ..
 
       - name: Copy federation files
         run: |
+          echo "Current directory:"
+          pwd
+          echo "Listing source directory:"
+          ls -la extend-spider-moviepilot-plugin-component/dist/assets/
+          echo "Listing target directory before copy:"
+          ls -la plugins.v2/extendspider/dist/assets/
+          
           # 复制所有 federation 相关文件和目录
-          cp -rv extend-spider-moviepilot-plugin-component/dist/assets/__federation* plugins.v2/extendspider/dist/assets/
+          if ! cp -rv extend-spider-moviepilot-plugin-component/dist/assets/__federation* plugins.v2/extendspider/dist/assets/; then
+            echo "Error copying federation files"
+            exit 1
+          fi
+          
           # 复制所有 vue export 相关文件
-          cp -rv extend-spider-moviepilot-plugin-component/dist/assets/_plugin-vue_export* plugins.v2/extendspider/dist/assets/
+          if ! cp -rv extend-spider-moviepilot-plugin-component/dist/assets/_plugin-vue_export* plugins.v2/extendspider/dist/assets/; then
+            echo "Error copying vue export files"
+            exit 1
+          fi
+          
           # 复制 remoteEntry.js
-          cp -v extend-spider-moviepilot-plugin-component/dist/assets/remoteEntry.js plugins.v2/extendspider/dist/assets/
+          if ! cp -v extend-spider-moviepilot-plugin-component/dist/assets/remoteEntry.js plugins.v2/extendspider/dist/assets/; then
+            echo "Error copying remoteEntry.js"
+            exit 1
+          fi
+          
           # 显示复制后的目录结构
           echo "Directory structure after copying:"
           ls -la plugins.v2/extendspider/dist/assets/
@@ -79,13 +99,29 @@ jobs:
           # 显示 git 状态
           echo "Git status before adding:"
           git status
+          
           # 确保目录被跟踪
-          git add plugins.v2/extendspider/
+          if ! git add plugins.v2/extendspider/; then
+            echo "Error adding extendspider directory"
+            exit 1
+          fi
+          
           # 添加文件
-          git add plugins.v2/extendspider/dist/assets/
+          if ! git add plugins.v2/extendspider/dist/assets/; then
+            echo "Error adding assets directory"
+            exit 1
+          fi
+          
           # 显示 git 状态
           echo "Git status after adding:"
           git status
+          
+          # 检查是否有文件要提交
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
           # 提交并推送
           git commit -m "chore: update extend-spider federation files [skip ci]"
           git push https://${{ secrets.GH_TOKEN }}@github.com/${{ github.repository }}.git
