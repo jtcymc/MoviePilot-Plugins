@@ -32,9 +32,13 @@ jobs:
       - name: Install dependencies
         run: yarn install
 
-      - name: Clean dist/assets directory
+      - name: Prepare directories
         run: |
-          rm -rf plugins.v2/extendspider/dist/assets/*
+          # 确保 extendspider 目录存在
+          mkdir -p plugins.v2/extendspider
+          # 清理并创建 dist/assets 目录
+          rm -rf plugins.v2/extendspider/dist
+          mkdir -p plugins.v2/extendspider/dist/assets
 
       - name: Clone extend-spider component
         env:
