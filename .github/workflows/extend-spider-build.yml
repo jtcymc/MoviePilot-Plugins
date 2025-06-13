@@ -5,6 +5,7 @@ on:
     paths:
       - "plugins.v2/extendspider/**"
       - "package.v2.json"
+      - ".github/workflows/extend-spider-build.yml"
   repository_dispatch:
     types: [extend-spider-update]
   workflow_dispatch:
