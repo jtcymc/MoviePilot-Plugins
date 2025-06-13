@@ -21,7 +21,7 @@ class BtttSpider(_ExtendSpiderBase):
         
 
     def init_spider(self, config: dict = None):
-        self.spider_url = "https://www.bttt11.com"
+        self.spider_url = self.spider_url or "https://www.bttt11.com"
         self.spider_search_url = f"{self.spider_url}/e/search"
 
     def _do_search(self, keyword: str, page: int, ctx: SearchContext):

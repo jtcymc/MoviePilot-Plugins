@@ -16,18 +16,31 @@ spider_configs = \
                          'spider_proxy': False,
                          'pass_cloud_flare': True,
                          'proxy_type': 'playwright',
+                         'spider_url': 'https://www.1lou.me',
                          'spider_desc': 'BT之家1LOU站-回归初心，追求极简',
+                         "spider_tags": [
+                             "电影", "电视剧", "动漫"
+                         ]
                          },
+        "Bt0lSpider": {'spider_name': 'Bt0lSpider',
+                       'spider_enable': True,
+                       'spider_proxy': False,
+                       'proxy_type': 'playwright',
+                       'spider_url': 'https://www.6bt0.com',
+                       'spider_desc': '不太灵-影视管理系统',
+                       },
         "BtBtlSpider": {'spider_name': 'BtBtlSpider',
                         'spider_enable': True,
                         'spider_proxy': False,
                         'proxy_type': 'playwright',
+                        'spider_url': 'https://www.btbtl.com',
                         'spider_desc': 'BT影视_4k高清电影BT下载_蓝光迅雷电影下载_最新电视剧下载',
                         },
         "BtBuLuoSpider": {'spider_name': 'BtBuLuoSpider',
                           'spider_enable': True,
                           'spider_proxy': False,
                           'proxy_type': 'playwright',
+                          'spider_url': 'https://www.btbuluo.net',
                           'spider_desc': 'BT部落天堂 - 注重体验与质量的影视资源下载网站',
                           },
 
@@ -35,38 +48,42 @@ spider_configs = \
                        'spider_enable': True,
                        'spider_proxy': False,
                        'proxy_type': 'playwright',
+                       'spider_url': 'https://www.btdx8.vip',
                        'spider_desc': '比特大雄_BT电影天堂_最新720P、1080P高清电影BT种子免注册下载网站',
                        },
         "BtttSpider": {'spider_name': 'BtttSpider',
                        'spider_enable': True,
                        'spider_proxy': False,
                        'proxy_type': 'playwright',
+                       'spider_url': 'https://www.bttt11.com',
                        'spider_desc': 'BT天堂 - 2025最新高清电影1080P|2160P|4K资源免费下载',
                        },
-        "Dytt8899Spider": {'spider_name': 'Dytt8899Spider',
-                           'spider_enable': True,
-                           'spider_proxy': False,
-                           'proxy_type': 'playwright',
-                           'spider_desc': '电影天堂_电影下载_高清首发',
-                           },
-        "Bt0lSpider": {'spider_name': 'Bt0lSpider',
-                       'spider_enable': True,
-                       'spider_proxy': False,
-                       'proxy_type': 'playwright',
-                       'spider_desc': '不太灵-影视管理系统',
-                       },
+
         "CiLiXiongSpider": {'spider_name': 'CiLiXiongSpider',
                             'spider_enable': True,
                             'spider_proxy': False,
                             'pass_cloud_flare': True,
                             'proxy_type': 'playwright',
+                            'spider_url': 'https://www.cilixiong.cc',
                             'spider_desc': '磁力熊，支持完结影视',
+                            "spider_tags": [
+                                "电影", "电视剧", "动漫", "完结"
+                            ]
                             },
+        "Dytt8899Spider": {'spider_name': 'Dytt8899Spider',
+                           'spider_enable': True,
+                           'spider_proxy': False,
+                           'proxy_type': 'playwright',
+                           'spider_url': 'https://www.dytt8899.com',
+                           'spider_desc': '电影天堂_电影下载_高清首发',
+                           },
+
         "GyingKSpider": {'spider_name': 'GyingKSpider',
                          'spider_enable': True,
                          'spider_proxy': False,
                          'pass_cloud_flare': False,
                          'proxy_type': 'playwright',
+                         'spider_url': 'https://www.gying.org',
                          'spider_desc': '观影 GYING',
                          'spider_username': '',
                          'spider_password': '',
@@ -108,18 +125,27 @@ class ExtendSpider(_PluginBase):
         """
         初始化插件
         """
-        # 读取配置
-        if config:
-            self._enabled = config.get("enabled")
-            self._onlyonce = config.get("onlyonce")
-            self._cron = config.get("cron")
-            self._spider_config = config.get("spider_config") if config.get("spider_config") else copy(spider_configs)
-        else:
-            self._spider_config = copy(spider_configs)
-        # 停止现有任务
-        self.stop_service()
-        self._spider_helper = SpiderHelper(self._spider_config)
-        self.reload_config()
+        try:
+            # 读取配置
+            if config:
+                self._enabled = config.get("enabled")
+                self._onlyonce = config.get("onlyonce")
+                self._cron = config.get("cron")
+                self._spider_config = config.get("spider_config") if config.get("spider_config") else copy(
+                    spider_configs)
+            else:
+                self._spider_config = copy(spider_configs)
+
+            # 初始化爬虫助手
+            if not self._spider_helper:
+                self._spider_helper = SpiderHelper(self._spider_config)
+            # 重新加载配置
+            self.reload_config()
+
+            logger.info(f"插件初始化完成，当前状态：{'启用' if self._enabled else '禁用'}")
+        except Exception as e:
+            logger.error(f"插件初始化失败：{str(e)}")
+            self._spider_helper = None
 
     def reload_config(self):
         """
@@ -210,6 +236,37 @@ class ExtendSpider(_PluginBase):
         logger.info(f"【{self.plugin_name}】检索Indexer：{s_name} 返回资源数：{len(ret)}")
         return ret
 
+    def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+        """
+        拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
+        """
+        return [], {}
+
+    def get_initial_config(self) -> Dict[str, Any]:
+        """
+        获取插件初始配置
+        :return: 初始配置数据
+        """
+        try:
+            # 获取爬虫状态
+            spider_status = self._spider_helper.get_spider_status() if self._spider_helper else []
+
+            # 构建初始配置数据
+            initial_config = {
+                "enabled": self._enabled,
+                "cron": self._cron,
+                "onlyonce": self._onlyonce,
+                "spider_config": self._spider_config
+            }
+
+            return {
+                "success": True,
+                "data": initial_config
+            }
+        except Exception as e:
+            logger.error(f"获取初始配置失败：{str(e)}")
+            return {"success": False, "message": f"获取初始配置失败：{str(e)}"}
+
     def get_api(self) -> List[Dict[str, Any]]:
         """
         获取插件API
@@ -221,6 +278,22 @@ class ExtendSpider(_PluginBase):
         }]
         """
         return [
+            {
+                "path": "/initial_config",
+                "endpoint": self.get_initial_config,
+                "methods": ["GET"],
+                "auth": "bear",
+                "summary": "获取插件初始配置",
+                "description": "获取插件初始配置信息"
+            },
+            {
+                "path": "/config",
+                "endpoint": self.__get_config,
+                "methods": ["GET"],
+                "auth": "bear",
+                "summary": "获取插件配置",
+                "description": "获取插件当前配置信息"
+            },
             {
                 "path": "/toggle_spider",
                 "endpoint": self.__toggle_spider,
@@ -287,6 +360,25 @@ class ExtendSpider(_PluginBase):
             }
         ]
 
+    def __get_config(self) -> Dict[str, Any]:
+        """
+        获取插件配置
+        :return: 配置信息
+        """
+        try:
+            return {
+                "success": True,
+                "data": {
+                    "enabled": self._enabled,
+                    "cron": self._cron,
+                    "onlyonce": self._onlyonce,
+                    "spider_config": self._spider_config
+                }
+            }
+        except Exception as e:
+            logger.error(f"获取配置失败：{str(e)}")
+            return {"success": False, "message": f"获取配置失败：{str(e)}"}
+
     def __toggle_spider(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         启用/停止爬虫
@@ -333,7 +425,7 @@ class ExtendSpider(_PluginBase):
 
             if spider_name in self._spider_helper.spider_config:
                 # 更新配置
-                self._spider_helper.spider_config[spider_name].update(config)
+                self._spider_config[spider_name].update(config)
                 # 保存配置
                 self.reload_config()
                 return {"success": True, "message": f"爬虫 {spider_name} 配置更新成功"}
@@ -360,7 +452,7 @@ class ExtendSpider(_PluginBase):
 
             if spider_name in spider_configs:
                 # 重置为默认配置
-                self._spider_helper.spider_config[spider_name] = copy(spider_configs[spider_name])
+                self._spider_config[spider_name] = copy(spider_configs[spider_name])
                 # 保存配置
                 self.reload_config()
                 return {"success": True, "message": f"爬虫 {spider_name} 配置已重置为默认值"}
@@ -380,7 +472,7 @@ class ExtendSpider(_PluginBase):
                 return {"success": False, "message": "爬虫助手未初始化"}
 
             # 重置所有配置为默认值
-            self._spider_helper.spider_config = copy(spider_configs)
+            self._spider_config = copy(spider_configs)
             # 保存配置
             self.reload_config()
             return {"success": True, "message": "所有爬虫配置已重置为默认值"}
@@ -398,14 +490,14 @@ class ExtendSpider(_PluginBase):
                 return {"success": False, "message": "爬虫助手未初始化"}
 
             # 获取所有爬虫状态
-            total = len(self._spider_helper.spider_config)
-            enabled = sum(1 for spider in self._spider_helper.spider_config.values() if spider.get('spider_enable'))
+            total = len(self._spider_config)
+            enabled = sum(1 for spider in self._spider_config.values() if spider.get('spider_enable'))
             disabled = total - enabled
 
             # 获取所有爬虫的标签和网址
             all_tags = set()
             spider_urls = {}
-            for spider_name, spider in self._spider_helper.spider_config.items():
+            for spider_name, spider in self._spider_config.items():
                 if 'spider_tags' in spider:
                     all_tags.update(spider['spider_tags'])
                 # 获取爬虫网址
@@ -413,11 +505,10 @@ class ExtendSpider(_PluginBase):
                     url = self._spider_helper.get_spider_url(spider_name)
                     if url:
                         spider_urls[spider_name] = url
-            for spider_name, spider in self._spider_helper.spiders.items():
-                if hasattr(spider, 'spider_url'):
-                    url = spider.spider_url
-                    if url:
-                        spider_urls[spider_name] = url
+            for spider in self._spider_helper.running_spiders:
+                url = spider.spider_url
+                if url:
+                    spider_urls[spider.spider_name] = url
             return {
                 "success": True,
                 "total": total,
@@ -543,12 +634,6 @@ class ExtendSpider(_PluginBase):
         :return: 2、组件路径，默认 dist/assets
         """
         return "vue", "dist/assets"
-
-    def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        """
-            拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
-        """
-        return [], {}
 
     def get_page(self) -> List[dict]:
         """

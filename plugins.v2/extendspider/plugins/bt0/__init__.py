@@ -22,7 +22,7 @@ class Bt0lSpider(_ExtendSpiderBase):
         self._result_lock = threading.Lock()
 
     def init_spider(self, config: dict = None):
-        self.spider_url = "https://www.6bt0.com"
+        self.spider_url = self.spider_url or "https://www.6bt0.com"
         self.spider_search_url = f"{self.spider_url}/search?sb=$key$"
     def get_search_url(self, keyword: str, page: int) -> str:
         if not keyword:

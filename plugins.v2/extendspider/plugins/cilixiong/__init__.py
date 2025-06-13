@@ -19,7 +19,7 @@ class CiLiXiongSpider(_ExtendSpiderBase):
         self._result_lock = threading.Lock()
 
     def init_spider(self, config: dict = None):
-        self.spider_url = "https://www.cilixiong.cc"
+        self.spider_url = self.spider_url or "https://www.cilixiong.cc"
 
     def _do_search(self, keyword: str, page: int, ctx: SearchContext):
         results = []

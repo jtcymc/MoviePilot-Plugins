@@ -3,16 +3,9 @@ from typing import List, Any, Optional, Dict, Tuple
 
 from app.helper.module import ModuleHelper
 from app.log import logger
-from app.utils.singleton import SingletonClass
 from app.plugins.extendspider.plugins.base import _ExtendSpiderBase
 from app.schemas import SearchContext
-
-
-# cc = {
-#     'spider_name': '',
-#     'spider_enable': True,
-#     'spider_desc': '',
-# }
+from app.utils.singleton import SingletonClass
 
 
 class SpiderHelper(metaclass=SingletonClass):
@@ -108,7 +101,7 @@ class SpiderHelper(metaclass=SingletonClass):
             logger.info("正在停止所有插件...")
             plugins = self._extend_running_plugins
 
-        for plugin_id, plugin in plugins.items():
+        for _, plugin in plugins.items():
             plugin.spider_enable = False
             # 清空对像
         if s_name:

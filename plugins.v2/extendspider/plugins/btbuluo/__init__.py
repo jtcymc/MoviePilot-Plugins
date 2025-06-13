@@ -20,7 +20,7 @@ class BtBuLuoSpider(_ExtendSpiderBase):
         
 
     def init_spider(self, config: dict = None):
-        self.spider_url = "https://www.btbuluo.net"
+        self.spider_url = self.spider_url or "https://www.btbuluo.net"
         self.spider_search_url = f"{self.spider_url}/s/$key$.html"
 
     def get_search_url(self, keyword: str, page: int) -> str:

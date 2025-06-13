@@ -25,7 +25,7 @@ class Bt1louSpider(_ExtendSpiderBase):
         self.spider_max_load_page = 2
 
     def init_spider(self, config: dict = None):
-        self.spider_url = "https://www.1lou.me"
+        self.spider_url = self.spider_url or "https://www.1lou.me"
         self.spider_search_url = f"{self.spider_url}/search-$key$-$page$.htm"
 
     def _get_page(self, page: int) -> str:

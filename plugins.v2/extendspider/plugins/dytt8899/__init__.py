@@ -20,7 +20,7 @@ class Dytt8899Spider(_ExtendSpiderBase):
         
 
     def init_spider(self, config: dict = None):
-        self.spider_url = "https://www.dytt8899.com"
+        self.spider_url = self.spider_url or "https://www.dytt8899.com"
         self.spider_search_url = f"{self.spider_url}/e/search/index.php"
 
     def _do_search(self, keyword: str, page: int, ctx: SearchContext):

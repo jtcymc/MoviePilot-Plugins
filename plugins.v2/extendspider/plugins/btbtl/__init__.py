@@ -21,7 +21,7 @@ class BtBtlSpider(_ExtendSpiderBase):
         super(BtBtlSpider, self).__init__(config)
 
     def init_spider(self, config: dict = None):
-        self.spider_url = "https://www.btbtl.com"
+        self.spider_url = self.spider_url or "https://www.btbtl.com"
         self.spider_search_url = f"{self.spider_url}/search/$key$"
 
     def get_search_url(self, keyword: str, page: int) -> str:

@@ -78,6 +78,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         self.spider_desc = config.get("spider_desc")
         self.spider_enable = config.get("spider_enable")
         self.spider_proxy = config.get("spider_proxy")
+        self.spider_url = config.get("spider_url")
         # 跳过cloudflare
         self.pass_cloud_flare = config.get("pass_cloud_flare", False)
         self.spider_ua = config.get("spider_ua", settings.USER_AGENT)

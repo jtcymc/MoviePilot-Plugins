@@ -22,7 +22,7 @@ class GyingKSpider(_ExtendSpiderBase):
         self.spider_password = config.get("spider_password")
 
     def init_spider(self, config: dict = None):
-        self.spider_url = "https://www.gying.org"
+        self.spider_url = self.spider_url or "https://www.gying.org"
 
     def get_search_url(self, keyword: str, page: int) -> str:
         if not keyword:
