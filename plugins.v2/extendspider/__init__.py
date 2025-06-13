@@ -225,25 +225,33 @@ class ExtendSpider(_PluginBase):
                 "path": "/toggle_spider",
                 "endpoint": self.__toggle_spider,
                 "methods": ["POST"],
-                "summary": "启用/停止爬虫"
+                "summary": "启用/停止爬虫",
+                "auth": "bear",  # 认证类型设为bear
+                "description": "启用/停止爬虫"
             },
             {
                 "path": "/edit_config",
                 "endpoint": self.__edit_config,
                 "methods": ["POST"],
-                "summary": "编辑爬虫配置"
+                "auth": "bear",  # 认证类型设为bear
+                "summary": "编辑爬虫配置",
+                "description": "编辑爬虫配置"
             },
             {
                 "path": "/reset_config",
                 "endpoint": self.__reset_config,
                 "methods": ["POST"],
-                "summary": "重置爬虫配置"
+                "auth": "bear",  # 认证类型设为bear
+                "summary": "重置爬虫配置",
+                "description": "重置爬虫配置"
             },
             {
                 "path": "/reset_all_config",
                 "endpoint": self.__reset_all_config,
                 "methods": ["POST"],
-                "summary": "重置所有爬虫配置"
+                "auth": "bear",  # 认证类型设为bear
+                "summary": "重置所有爬虫配置",
+                "description": "重置所有爬虫配置"
             }
         ]
 
@@ -332,243 +340,263 @@ class ExtendSpider(_PluginBase):
         except Exception as e:
             logger.error(f"重置所有爬虫配置失败：{str(e)}")
             return {"success": False, "message": f"重置配置失败：{str(e)}"}
-
+    def get_render_mode(self) -> Tuple[str, str]:
+        """
+        获取插件渲染模式
+        :return: 1、渲染模式，支持：vue/vuetify，默认vuetify
+        :return: 2、组件路径，默认 dist/assets
+        """
+        return "vue", "dist/assets"
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         """
             拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
-        import json
-        # 获取爬虫状态
-        spider_status = self._spider_helper.get_spider_status() if self._spider_helper else []
-
-        # 构建爬虫配置面板
-        spider_panels = []
-        for spider in spider_status:
-            spider_name = spider.get('name')
-            spider_config = self._spider_helper.spider_config[spider_name]
-            spider_panels.append({
-                'component': 'VExpansionPanel',
-                'content': [
-                    {
-                        'component': 'VExpansionPanelTitle',
-                        'text': f"{spider.get('name')} - {spider.get('desc')}"
-                    },
-                    {
-                        'component': 'VExpansionPanelText',
-                        'content': [
-                            {
-                                'component': 'VRow',
-                                'content': [
-                                    {
-                                        'component': 'VCol',
-                                        'props': {'cols': 12},
-                                        'content': [
-                                            {
-                                                'component': 'VTextField',
-                                                'props': {
-                                                    'label': '网站地址',
-                                                    'value': spider.get('url', ''),
-                                                    'readonly': True
-                                                }
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        'component': 'VCol',
-                                        'props': {'cols': 12},
-                                        'content': [
-                                            {
-                                                'component': 'VSwitch',
-                                                'props': {
-                                                    'model': f'spider_enable_{spider.get("name")}',
-                                                    'label': '启用爬虫',
-                                                    'color': 'success' if spider.get("enable") else 'error'
-                                                },
-                                                "events": {
-                                                    "click": {
-                                                        "api": "plugin/ExtendSpider/toggle_spider",
-                                                        "method": "post",
-                                                        "params": {
-                                                            "spider_name": spider_name
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        'component': 'VCol',
-                                        'props': {'cols': 12},
-                                        'content': [
-                                            {
-                                                'component': 'VBtn',
-                                                'props': {
-                                                    'color': 'success' if spider.get("web_status") else 'error',
-                                                    'text': '正常' if spider.get("web_status") else '异常',
-                                                    'block': True
-                                                }
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        'component': 'VCol',
-                                        'props': {'cols': 12},
-                                        'content': [
-                                            {
-                                                'component': 'VTextarea',
-                                                'props': {
-                                                    'model': f'config_json_{spider_name}',
-                                                    'label': '爬虫配置（JSON格式）',
-                                                    'rows': 10,
-                                                    'value': json.dumps(spider_config, ensure_ascii=False, indent=2)
-                                                }
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        'component': 'VCol',
-                                        'props': {'cols': 12},
-                                        'content': [
-                                            {
-                                                'component': 'VBtn',
-                                                'props': {
-                                                    'color': 'primary',
-                                                    'text': '保存配置',
-                                                    'block': True
-                                                },
-                                                'events': {
-                                                    'click': {
-                                                        'api': 'plugin/ExtendSpider/edit_config',
-                                                        'method': 'post',
-                                                        'params': {
-                                                            'spider_name': spider_name,
-                                                            'config': f'{{config_json_{spider_name}}}'
-                                                        }
-                                                    }
-                                                }
-                                            },
-                                            {
-                                                'component': 'VBtn',
-                                                'props': {
-                                                    'color': 'warning',
-                                                    'text': '重置配置',
-                                                    'block': True,
-                                                    'class': 'mt-2'
-                                                },
-                                                'events': {
-                                                    'click': {
-                                                        'api': 'plugin/ExtendSpider/reset_config',
-                                                        'method': 'post',
-                                                        'params': {
-                                                            'spider_name': spider_name
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        ]
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            })
-
-        return [
-            {
-                'component': 'VForm',
-                'content': [
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'enabled',
-                                            'label': '启用插件',
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VBtn',
-                                        'props': {
-                                            'color': 'error',
-                                            'text': '重置所有配置',
-                                            'block': True
-                                        },
-                                        'events': {
-                                            'click': {
-                                                'api': 'plugin/ExtendSpider/reset_all_config',
-                                                'method': 'post'
-                                            }
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 6
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VTextField',
-                                        'props': {
-                                            'model': 'cron',
-                                            'label': '更新周期',
-                                            'placeholder': '0 0 */24 * *',
-                                            'hint': '爬虫状态更新周期，支持5位cron表达式，默认每24小时运行一次'
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VExpansionPanels',
-                                        'content': spider_panels
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            }
-        ], {
-            "enabled": False,
-            "cron": "0 0 */24 * *",
-            "onlyonce": False
-        }
+        # import json
+        # # 获取爬虫状态
+        # spider_status = self._spider_helper.get_spider_status() if self._spider_helper else []
+        #
+        # # 构建爬虫配置面板
+        # spider_panels = []
+        # for spider in spider_status:
+        #     spider_name = spider.get('name')
+        #     spider_config = self._spider_helper.spider_config[spider_name]
+        #     spider_panels.append({
+        #         'component': 'VExpansionPanel',
+        #         'content': [
+        #             {
+        #                 'component': 'VExpansionPanelTitle',
+        #                 'text': f"{spider.get('name')} - {spider.get('desc')}"
+        #             },
+        #             {
+        #                 'component': 'VExpansionPanelText',
+        #                 'content': [
+        #                     {
+        #                         'component': 'VRow',
+        #                         'content': [
+        #                             {
+        #                                 'component': 'VCol',
+        #                                 'props': {'cols': 12},
+        #                                 'content': [
+        #                                     {
+        #                                         'component': 'VTextField',
+        #                                         'props': {
+        #                                             'label': '网站地址',
+        #                                             'model-value': spider.get('url', ''),
+        #                                             'readonly': True
+        #                                         }
+        #                                     }
+        #                                 ]
+        #                             },
+        #                             {
+        #                                 'component': 'VCol',
+        #                                 'props': {'cols': 6},
+        #                                 'content': [
+        #                                     {
+        #                                         'component': 'VSwitch',
+        #                                         'props': {
+        #                                             'model-value': f'spider_enable_{spider.get("name")}',
+        #                                             'label': '启用爬虫',
+        #                                             'color': 'success' if spider.get("enable") else 'error'
+        #                                         },
+        #                                         "events": {
+        #                                             "click": {
+        #                                                 "api": "plugin/ExtendSpider/toggle_spider",
+        #                                                 "method": "post",
+        #                                                 "params": {
+        #                                                     "spider_name": spider_name
+        #                                                 }
+        #                                             }
+        #                                         }
+        #                                     }
+        #                                 ]
+        #                             },
+        #                             {
+        #                                 'component': 'VCol',
+        #                                 'props': {'cols': 4},
+        #                                 'content': [
+        #                                     {
+        #                                         'component': 'VBtn',
+        #                                         'props': {
+        #                                             'color': 'success' if spider.get("web_status") else 'error',
+        #                                             'text': '正常' if spider.get("web_status") else '异常',
+        #                                             'block': True
+        #                                         }
+        #                                     }
+        #                                 ]
+        #                             },
+        #                             {
+        #                                 'component': 'VCol',
+        #                                 'props': {'cols': 12},
+        #                                 'content': [
+        #                                     {
+        #                                         'component': 'VTextarea',
+        #                                         'props': {
+        #                                             'model': f'config_json_{spider_name}',
+        #                                             'label': '爬虫配置（JSON格式）',
+        #                                             'rows': 10,
+        #                                             'value': json.dumps(spider_config, ensure_ascii=False, indent=2)
+        #                                         }
+        #                                     }
+        #                                 ]
+        #                             },
+        #                             {
+        #                                 'component': 'VCol',
+        #                                 'props': {'cols': 12,'align-self':'baseline'},
+        #                                 'content': [
+        #                                     {
+        #                                         'component': 'VCol',
+        #                                         'props': {'cols': 4},
+        #                                         'content': [
+        #                                             {
+        #                                                 'component': 'VBtn',
+        #                                                 'props': {
+        #                                                     'color': 'primary',
+        #                                                     'text': '保存配置',
+        #                                                     'block': True
+        #                                                 },
+        #                                                 'events': {
+        #                                                     'click': {
+        #                                                         'api': 'plugin/ExtendSpider/edit_config',
+        #                                                         'method': 'post',
+        #                                                         'params': {
+        #                                                             'spider_name': spider_name,
+        #                                                             'config': f'{{config_json_{spider_name}}}'
+        #                                                         }
+        #                                                     }
+        #                                                 }
+        #                                             },
+        #                                         ]
+        #                                     },
+        #                                     {
+        #                                         'component': 'VCol',
+        #                                         'props': {'cols': 4},
+        #                                         'content': [
+        #                                             {
+        #                                                 'component': 'VBtn',
+        #                                                 'props': {
+        #                                                     'color': 'warning',
+        #                                                     'text': '重置配置',
+        #                                                     'block': True,
+        #                                                     'class': 'mt-2'
+        #                                                 },
+        #                                                 'events': {
+        #                                                     'click': {
+        #                                                         'api': 'plugin/ExtendSpider/reset_config',
+        #                                                         'method': 'post',
+        #                                                         'params': {
+        #                                                             'spider_name': spider_name
+        #                                                         }
+        #                                                     }
+        #                                                 }
+        #                                             }
+        #                                         ]
+        #                                     }
+        #                                 ]
+        #                             },
+        #
+        #                         ]
+        #                     }
+        #                 ]
+        #             }
+        #         ]
+        #     })
+        #
+        # return [
+        #     {
+        #         'component': 'VForm',
+        #         'content': [
+        #             {
+        #                 'component': 'VRow',
+        #                 'content': [
+        #                     {
+        #                         'component': 'VCol',
+        #                         'props': {
+        #                             'cols': 12,
+        #                             'md': 6
+        #                         },
+        #                         'content': [
+        #                             {
+        #                                 'component': 'VSwitch',
+        #                                 'props': {
+        #                                     'model-value': 'enabled',
+        #                                     'label': '启用插件',
+        #                                 }
+        #                             }
+        #                         ]
+        #                     },
+        #                     {
+        #                         'component': 'VCol',
+        #                         'props': {
+        #                             'cols': 6,
+        #                             'md': 4
+        #                         },
+        #                         'content': [
+        #                             {
+        #                                 'component': 'VBtn',
+        #                                 'props': {
+        #                                     # 'color': 'error',
+        #                                     'text': '重置所有配置',
+        #                                     'block': True
+        #                                 },
+        #                                 'events': {
+        #                                     'click': {
+        #                                         'api': 'plugin/ExtendSpider/reset_all_config',
+        #                                         'method': 'post'
+        #                                     }
+        #                                 }
+        #                             }
+        #                         ]
+        #                     }
+        #                 ]
+        #             },
+        #             {
+        #                 'component': 'VRow',
+        #                 'content': [
+        #                     {
+        #                         'component': 'VCol',
+        #                         'props': {
+        #                             'cols': 12,
+        #                             'md': 6
+        #                         },
+        #                         'content': [
+        #                             {
+        #                                 'component': 'VTextField',
+        #                                 'props': {
+        #                                     'model': 'cron',
+        #                                     'label': '更新周期',
+        #                                     'placeholder': '0 0 */24 * *',
+        #                                     'hint': '爬虫状态更新周期，支持5位cron表达式，默认每24小时运行一次'
+        #                                 }
+        #                             }
+        #                         ]
+        #                     }
+        #                 ]
+        #             },
+        #             {
+        #                 'component': 'VRow',
+        #                 'content': [
+        #                     {
+        #                         'component': 'VCol',
+        #                         'props': {
+        #                             'cols': 12
+        #                         },
+        #                         'content': [
+        #                             {
+        #                                 'component': 'VExpansionPanels',
+        #                                 'content': spider_panels
+        #                             }
+        #                         ]
+        #                     }
+        #                 ]
+        #             }
+        #         ]
+        #     }
+        # ], {
+        #     "enabled": False,
+        #     "cron": "0 0 */24 * *",
+        #     "onlyonce": False
+        # }
+        return [], {}
 
     def get_page(self) -> List[dict]:
         """
