@@ -46,7 +46,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     # 是否开启限流
     spider_ratelimit = True
     # 爬虫插件名称
-    _plugin_name = "PluginSpider"
+    _plugin_name = "ExtendSpider"
     _limiters = {}
     # 代理实例
     spider_proxy_client = None  # 请求间隔时间范围（秒）
@@ -73,7 +73,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     spider_ua = ""
 
     def __init__(self, config: dict = None):
-        self._plugin_name = config.get("plugin_name")
+        self._plugin_name = config.get("plugin_name","ExtendSpider")
         self.spider_name = config.get("spider_name")
         self.spider_desc = config.get("spider_desc")
         self.spider_enable = config.get("spider_enable")

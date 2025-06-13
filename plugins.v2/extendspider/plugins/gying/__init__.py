@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from DrissionPage import Chromium
+from DrissionPage.common import By
 from app.log import logger
 from helper.search_filter import SearchFilterHelper
 from plugins.extendspider.plugins.base import _ExtendSpiderBase
@@ -41,17 +42,15 @@ class GyingKSpider(_ExtendSpiderBase):
         browser = create_drission_chromium(headless=True, ua=self.spider_ua)
         if not self.spider_cookie:
             self.to_login(browser)
-        if self.spider_cookie:
-            browser.set.cookies(self.spider_cookie)
         tab1 = browser.latest_tab
         try:
-            self._wait(0.5, 1)
+            # self._wait(0.5, 1)
             # 访问主页并处理 Cloudflare
             logger.info(f"{self.spider_name}-正在访问 {self.spider_url}...")
             # 等待页面加载完成
             tab1.set.load_mode.eager()  # 设置加载模式为none
-            tab1.get(self.spider_url)
-            logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
+            # tab1.get(self.spider_url)
+            # logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
             tab1.wait(0.5, 1.2)
             tab1.get(self.get_search_url(keyword, page))
             if "游客无权访问此页面，请登录！" in tab1.html:
@@ -69,11 +68,15 @@ class GyingKSpider(_ExtendSpiderBase):
         tab = browser.latest_tab
         tab.get(f"{self.spider_url}/user/login/", timeout=20)
         tab.ele("css:input[name='username']").input(self.spider_username)
-        tab.ele("css:input[name='password']").input(self.spider_password)
+        tab.wait(0.5, 1.2)
+        tab.ele("css:.popup-content .popup-footer button").click()
+        tab.wait(0.5, 0.6)
+        tab.ele("css:input[name='password']").input(f"{self.spider_password}\n")
         tab.ele("css:button[type='submit']").click()
         tab.wait.ele_displayed("最近更新的电影", timeout=20)
         self.spider_cookie = tab.cookies()
         if self.spider_cookie:
+            logger.info(f"{self.spider_name}-登录成功")
             browser.set.cookies(self.spider_cookie)
 
     def _parse_search_result(self, browser: Chromium, ctx: SearchContext):
@@ -121,8 +124,10 @@ class GyingKSpider(_ExtendSpiderBase):
         # self._wait(0.5,1.5)
         new_tab = browser.new_tab()
         try:
-            new_tab.set.load_mode.eager()  # 设置加载模式为none
+            new_tab.set.load_mode.none()  # 设置加载模式为none
             new_tab.get(down_url, timeout=20)
+            new_tab.wait.ele_displayed("css:.down-list", timeout=30)
+            new_tab.stop_loading()
             p_tags = new_tab("css:div .down-list").s_eles("tag:p")
             if not p_tags:
                 return []
@@ -140,11 +145,14 @@ class GyingKSpider(_ExtendSpiderBase):
                     title_info = SearchFilterHelper().parse_title(a_tag.text)
                     if not title_info.size_num:
                         title_info.size = size_str
+                    loc2 = (By.XPATH, '//li[@class="down-list2"]//i[contains(@title, "做种")]')
+                    seeders_tags = new_tab.ele(loc2).text
                     results.append({
                         "title": a_tag.attr("title") or a_tag.text,
                         "enclosure": link,
                         "description": a_tag.attr("title") or a_tag.text,
-                        "size": title_info.size_num
+                        "size": title_info.size_num,
+                        "seeders": int(seeders_tags or 0),
                     })
                     url_set.add(link)
                 elif not link.startswith("magnet") and link not in to_down_urls:
@@ -234,7 +242,7 @@ if __name__ == "__main__":
         'proxy_config': {
             'flaresolverr_url': 'http://192.168.68.116:8191'
         },
-        'request_interval': (1.5, 1.9)  # 设置随机请求间隔，最小2秒，最大5秒
+        'request_interval': (1.5, 1.9),  # 设置随机请求间隔，最小2秒，最大5秒,
     })
     # 使用直接请求
     rest = lou.search("藏海传", 1)
