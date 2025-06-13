@@ -39,6 +39,9 @@ jobs:
           # 清理并创建 dist/assets 目录
           rm -rf plugins.v2/extendspider/dist
           mkdir -p plugins.v2/extendspider/dist/assets
+          # 显示目录结构
+          echo "Directory structure after preparation:"
+          ls -la plugins.v2/extendspider/dist/assets/
 
       - name: Clone extend-spider component
         env:
@@ -48,15 +51,21 @@ jobs:
           cd extend-spider-moviepilot-plugin-component
           yarn install
           yarn build
+          # 显示构建后的文件
+          echo "Built files in component:"
+          ls -la dist/assets/
 
       - name: Copy federation files
         run: |
           # 复制所有 federation 相关文件和目录
-          cp -r extend-spider-moviepilot-plugin-component/dist/assets/__federation* plugins.v2/extendspider/dist/assets/
+          cp -rv extend-spider-moviepilot-plugin-component/dist/assets/__federation* plugins.v2/extendspider/dist/assets/
           # 复制所有 vue export 相关文件
-          cp -r extend-spider-moviepilot-plugin-component/dist/assets/_plugin-vue_export* plugins.v2/extendspider/dist/assets/
+          cp -rv extend-spider-moviepilot-plugin-component/dist/assets/_plugin-vue_export* plugins.v2/extendspider/dist/assets/
           # 复制 remoteEntry.js
-          cp extend-spider-moviepilot-plugin-component/dist/assets/remoteEntry.js plugins.v2/extendspider/dist/assets/
+          cp -v extend-spider-moviepilot-plugin-component/dist/assets/remoteEntry.js plugins.v2/extendspider/dist/assets/
+          # 显示复制后的目录结构
+          echo "Directory structure after copying:"
+          ls -la plugins.v2/extendspider/dist/assets/
 
       - name: Configure Git
         run: |
@@ -67,6 +76,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
+          # 显示 git 状态
+          echo "Git status before adding:"
+          git status
+          # 确保目录被跟踪
+          git add plugins.v2/extendspider/
+          # 添加文件
           git add plugins.v2/extendspider/dist/assets/
+          # 显示 git 状态
+          echo "Git status after adding:"
+          git status
+          # 提交并推送
           git commit -m "chore: update extend-spider federation files [skip ci]"
           git push https://${{ secrets.GH_TOKEN }}@github.com/${{ github.repository }}.git
