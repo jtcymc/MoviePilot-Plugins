@@ -8,17 +8,15 @@ from app.log import logger
 from plugins.extendspider.plugins.base import _ExtendSpiderBase
 from app.schemas import SearchContext
 from app.utils.common import retry
-from app.core.config import settings
-from app.modules.indexer.utils.proxy import FlareSolverrProxy
 from app.plugins.extendspider.utils.browser import create_drission_chromium
 from app.utils.string import StringUtils
 from app.plugins.extendspider.utils.pass_verify import pass_slider_verification
 
 
-class Bt0lSpider(_ExtendSpiderBase):
+class Bt0Spider(_ExtendSpiderBase):
 
     def __init__(self, config: dict = None):
-        super(Bt0lSpider, self).__init__(config)
+        super(Bt0Spider, self).__init__(config)
         self._result_lock = threading.Lock()
 
     def init_spider(self, config: dict = None):
@@ -165,10 +163,10 @@ class Bt0lSpider(_ExtendSpiderBase):
 
 
 if __name__ == "__main__":
-    lou = Bt0lSpider({
+    lou = Bt0Spider({
         'spider_proxy': False,
         'spider_enable': True,
-        'spider_name': 'Bt0lSpider',
+        'spider_name': 'Bt0Spider',
         'proxy_type': 'playwright',
         'proxy_config': {
             'flaresolverr_url': 'http://192.168.68.116:8191'

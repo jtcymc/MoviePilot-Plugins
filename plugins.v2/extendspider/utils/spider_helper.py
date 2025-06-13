@@ -64,10 +64,12 @@ class SpiderHelper(metaclass=SingletonClass):
                 "app.plugins.extendspider.plugins",
                 filter_func=lambda _, obj: check_module(obj)
             )
+        logger.info(f"正在加载爬虫插件：{', '.join(plugin.spider_name for plugin in plugins)} ...")
         plugins.sort(key=lambda x: x.spider_order if hasattr(x, "spider_order") else 0)
         for plugin in plugins:
             plugin_id = plugin.__name__
             if s_name and plugin_id != s_name:
+                logger.warning(f"插件 {plugin_id} 不正确")
                 continue
             try:
                 # 存储Class

@@ -22,7 +22,7 @@ spider_configs = \
                              "电影", "电视剧", "动漫"
                          ]
                          },
-        "Bt0lSpider": {'spider_name': 'Bt0lSpider',
+        "Bt0Spider": {'spider_name': 'Bt0Spider',
                        'spider_enable': True,
                        'spider_proxy': False,
                        'proxy_type': 'playwright',
