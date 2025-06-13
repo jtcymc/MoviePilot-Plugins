@@ -48,6 +48,7 @@ class SpiderHelper(metaclass=SingletonClass):
             检查模块
             """
             if not hasattr(module, 'init_spider') or not hasattr(module, "spider_name"):
+                logger.warning(f"插件 {module.__name__} 不正确")
                 return False
             return True
 

@@ -8,7 +8,6 @@ from cf_clearance import sync_cf_retry, sync_stealth
 from app.core.config import settings
 from app.log import logger
 from plugins.extendspider.utils.browser import create_drission_chromium
-from plugins.extendspider.utils.pass_verify import pass_cloud_flare_verification
 from plugins.extendspider.utils.proxy import FlareSolverrProxy
 
 
@@ -99,9 +98,9 @@ def test_drission_page():
         tab1.get("https://www.1lou.me/")
         # ele = tab1.ele('#search_form', timeout=20)  # 查找text包含“中国日报”的元素
         # tab1.stop_loading()  # 主动停止加载
-        if not pass_cloud_flare_verification(tab1):
-            print("验证失败")
-            return
+        # if not pass_cloud_flare_verification(tab1):
+        #     print("验证失败")
+        #     return
 
         # 初始化一个空字符串，用于拼接页面的cookie信息
         cookies = ''

@@ -1,7 +1,6 @@
 import random
 import time
 
-import pyautogui
 from DrissionPage._pages.mix_tab import MixTab
 from bs4 import BeautifulSoup
 
@@ -140,10 +139,10 @@ def pass_cloud_flare_verification(tab: MixTab):
     logger.info(
         f"[CloudflareBypass.try_to_click_challenge] Click point [{click_x}, {click_y}]"
     )
-    pyautogui.moveTo(
-        click_x, click_y, duration=0.5, tween=pyautogui.easeInElastic
-    )
-    pyautogui.click()
+    # pyautogui.moveTo(
+    #     click_x, click_y, duration=0.5, tween=pyautogui.easeInElastic
+    # )
+    # pyautogui.click()
     tab.wait.load_start(timeout=20)
     # 再次校验页面是否仍为验证页面
     return not is_cloud_flare_verification_page(tab.html)
