@@ -80,9 +80,9 @@ class ExtendSpider(_PluginBase):
     # 插件描述
     plugin_desc = "以插件的方式获取索引器信息，支持更多的站点（app/sites/site_indexer.py和app/sites/sites.py的支持）"
     # 插件图标
-    plugin_icon = "ExtendSpider.png"
+    plugin_icon = "https://raw.githubusercontent.com/jtcymc/MoviePilot-Plugins/8ed891e0441a79628da01b9618fcd85ba7a88147/icons/Extend_Spider.png"
     # 插件版本
-    plugin_version = "1.4"
+    plugin_version = "1.5"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -226,14 +226,14 @@ class ExtendSpider(_PluginBase):
                 "endpoint": self.__toggle_spider,
                 "methods": ["POST"],
                 "summary": "启用/停止爬虫",
-                "auth": "bear",  # 认证类型设为bear
+                "auth": "bear",
                 "description": "启用/停止爬虫"
             },
             {
                 "path": "/edit_config",
                 "endpoint": self.__edit_config,
                 "methods": ["POST"],
-                "auth": "bear",  # 认证类型设为bear
+                "auth": "bear",
                 "summary": "编辑爬虫配置",
                 "description": "编辑爬虫配置"
             },
@@ -241,7 +241,7 @@ class ExtendSpider(_PluginBase):
                 "path": "/reset_config",
                 "endpoint": self.__reset_config,
                 "methods": ["POST"],
-                "auth": "bear",  # 认证类型设为bear
+                "auth": "bear",
                 "summary": "重置爬虫配置",
                 "description": "重置爬虫配置"
             },
@@ -249,9 +249,41 @@ class ExtendSpider(_PluginBase):
                 "path": "/reset_all_config",
                 "endpoint": self.__reset_all_config,
                 "methods": ["POST"],
-                "auth": "bear",  # 认证类型设为bear
+                "auth": "bear",
                 "summary": "重置所有爬虫配置",
                 "description": "重置所有爬虫配置"
+            },
+            {
+                "path": "/status",
+                "endpoint": self.__get_status,
+                "methods": ["GET"],
+                "auth": "bear",
+                "summary": "获取爬虫状态",
+                "description": "获取爬虫状态和统计信息"
+            },
+            {
+                "path": "/history",
+                "endpoint": self.__get_history,
+                "methods": ["GET"],
+                "auth": "bear",
+                "summary": "获取历史记录",
+                "description": "获取爬虫运行历史记录"
+            },
+            {
+                "path": "/add_tag",
+                "endpoint": self.__add_tag,
+                "methods": ["POST"],
+                "auth": "bear",
+                "summary": "添加标签",
+                "description": "为指定爬虫添加标签"
+            },
+            {
+                "path": "/remove_tag",
+                "endpoint": self.__remove_tag,
+                "methods": ["POST"],
+                "auth": "bear",
+                "summary": "删除标签",
+                "description": "从指定爬虫删除标签"
             }
         ]
 
@@ -340,6 +372,130 @@ class ExtendSpider(_PluginBase):
         except Exception as e:
             logger.error(f"重置所有爬虫配置失败：{str(e)}")
             return {"success": False, "message": f"重置配置失败：{str(e)}"}
+
+    def __get_status(self) -> Dict[str, Any]:
+        """
+        获取爬虫状态和统计信息
+        :return: 状态信息
+        """
+        try:
+            if not self._spider_helper:
+                return {"success": False, "message": "爬虫助手未初始化"}
+
+            # 获取所有爬虫状态
+            total = len(self._spider_helper.spider_config)
+            enabled = sum(1 for spider in self._spider_helper.spider_config.values() if spider.get('spider_enable'))
+            disabled = total - enabled
+
+            # 获取所有爬虫的标签
+            all_tags = set()
+            for spider in self._spider_helper.spider_config.values():
+                if 'spider_tags' in spider:
+                    all_tags.update(spider['spider_tags'])
+
+            return {
+                "success": True,
+                "total": total,
+                "enabled": enabled,
+                "disabled": disabled,
+                "tags": list(all_tags),
+                "status": "running" if self._enabled else "stopped"
+            }
+        except Exception as e:
+            logger.error(f"获取爬虫状态失败：{str(e)}")
+            return {"success": False, "message": f"获取状态失败：{str(e)}"}
+
+    def __get_history(self) -> List[Dict[str, Any]]:
+        """
+        获取爬虫运行历史记录
+        :return: 历史记录列表
+        """
+        try:
+            if not self._spider_helper:
+                return []
+
+            # 获取最近的历史记录
+            history = []
+            for spider in self._spider_helper.running_spiders:
+                spider_name = spider.__class__.__name__
+                if hasattr(spider, 'get_history'):
+                    spider_history = spider.get_history()
+                    if spider_history:
+                        history.extend(spider_history)
+
+            # 按时间排序
+            history.sort(key=lambda x: x.get('time', ''), reverse=True)
+            return history[:50]  # 只返回最近50条记录
+        except Exception as e:
+            logger.error(f"获取历史记录失败：{str(e)}")
+            return []
+
+    def __add_tag(self, spider_name: str, tag: str) -> Dict[str, Any]:
+        """
+        为指定爬虫添加标签
+        :param spider_name: 爬虫名称
+        :param tag: 标签名称
+        :return: 操作结果
+        """
+        try:
+            if not self._spider_helper:
+                return {"success": False, "message": "爬虫助手未初始化"}
+
+            if spider_name not in self._spider_helper.spider_config:
+                return {"success": False, "message": f"爬虫 {spider_name} 不存在"}
+
+            # 获取爬虫的标签列表
+            spider = self._spider_helper.spider_config[spider_name]
+            if 'spider_tags' not in spider:
+                spider['spider_tags'] = []
+
+            # 检查标签是否已存在
+            if tag in spider['spider_tags']:
+                return {"success": False, "message": f"爬虫 {spider_name} 已存在标签 {tag}"}
+
+            # 添加新标签
+            spider['spider_tags'].append(tag)
+
+            # 保存配置
+            self.reload_config()
+            return {"success": True, "message": f"爬虫 {spider_name} 添加标签 {tag} 成功"}
+        except Exception as e:
+            logger.error(f"添加标签失败：{str(e)}")
+            return {"success": False, "message": f"添加标签失败：{str(e)}"}
+
+    def __remove_tag(self, spider_name: str, tag: str) -> Dict[str, Any]:
+        """
+        从指定爬虫删除标签
+        :param spider_name: 爬虫名称
+        :param tag: 标签名称
+        :return: 操作结果
+        """
+        try:
+            if not self._spider_helper:
+                return {"success": False, "message": "爬虫助手未初始化"}
+
+            if spider_name not in self._spider_helper.spider_config:
+                return {"success": False, "message": f"爬虫 {spider_name} 不存在"}
+
+            # 获取爬虫的标签列表
+            spider = self._spider_helper.spider_config[spider_name]
+            if 'spider_tags' not in spider:
+                return {"success": False, "message": f"爬虫 {spider_name} 没有标签"}
+
+            # 检查标签是否存在
+            if tag not in spider['spider_tags']:
+                return {"success": False, "message": f"爬虫 {spider_name} 不存在标签 {tag}"}
+
+            # 删除标签
+            spider['spider_tags'].remove(tag)
+
+            # 保存配置
+            self.reload_config()
+            return {"success": True, "message": f"爬虫 {spider_name} 删除标签 {tag} 成功"}
+        except Exception as e:
+            logger.error(f"删除标签失败：{str(e)}")
+            return {"success": False, "message": f"删除标签失败：{str(e)}"}
+
     def get_render_mode(self) -> Tuple[str, str]:
         """
         获取插件渲染模式
@@ -347,6 +503,7 @@ class ExtendSpider(_PluginBase):
         :return: 2、组件路径，默认 dist/assets
         """
         return "vue", "dist/assets"
+
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         """
             拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
