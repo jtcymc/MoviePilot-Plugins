@@ -287,12 +287,17 @@ class ExtendSpider(_PluginBase):
             }
         ]
 
-    def __toggle_spider(self, spider_name: str) -> Dict[str, Any]:
+    def __toggle_spider(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         启用/停止爬虫
-        :param spider_name: 爬虫名称
+        :param params: {spider_name: str}
         :return: 操作结果
         """
+        if not self._enabled:
+            return {"success": False, "message": ""}
+        spider_name = params.get("spider_name")
+        if not params.get("spider_name"):
+            return {"success": False, "message": "请指定爬虫名称"}
         try:
             if not self._spider_config:
                 return {"success": False, "message": "爬虫配置未初始化"}
@@ -310,13 +315,18 @@ class ExtendSpider(_PluginBase):
             logger.error(f"操作爬虫 {spider_name} 失败：{str(e)}")
             return {"success": False, "message": f"操作失败：{str(e)}"}
 
-    def __edit_config(self, spider_name: str, config: dict) -> Dict[str, Any]:
+    def __edit_config(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         编辑爬虫配置
-        :param spider_name: 爬虫名称
-        :param config: 新的配置
+        :param params: {spider_name: str, config: dict}
         :return: 操作结果
         """
+        if not self._enabled:
+            return {"success": False, "message": ""}
+        spider_name = params.get("spider_name")
+        config = params.get("config")
+        if not params.get("spider_name") or not config:
+            return {"success": False, "message": "请指定爬虫名称和配置"}
         try:
             if not self._spider_helper:
                 return {"success": False, "message": "爬虫助手未初始化"}
@@ -333,12 +343,17 @@ class ExtendSpider(_PluginBase):
             logger.error(f"更新爬虫 {spider_name} 配置失败：{str(e)}")
             return {"success": False, "message": f"更新配置失败：{str(e)}"}
 
-    def __reset_config(self, spider_name: str) -> Dict[str, Any]:
+    def __reset_config(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         重置爬虫配置
-        :param spider_name: 爬虫名称
+        :param params: {spider_name: str}
         :return: 操作结果
         """
+        if not self._enabled:
+            return {"success": False, "message": ""}
+        spider_name = params.get("spider_name")
+        if not params.get("spider_name"):
+            return {"success": False, "message": "请指定爬虫名称"}
         try:
             if not self._spider_helper:
                 return {"success": False, "message": "爬虫助手未初始化"}
@@ -430,13 +445,20 @@ class ExtendSpider(_PluginBase):
             logger.error(f"获取历史记录失败：{str(e)}")
             return []
 
-    def __add_tag(self, spider_name: str, tag: str) -> Dict[str, Any]:
+    def __add_tag(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         为指定爬虫添加标签
-        :param spider_name: 爬虫名称
-        :param tag: 标签名称
+        :param params: { spider_name: str, tag: str}
         :return: 操作结果
         """
+        if not self._enabled:
+            return {"success": False, "message": ""}
+        spider_name = params.get("spider_name")
+        if not params.get("spider_name"):
+            return {"success": False, "message": "请指定爬虫名称"}
+        tag = params.get("tag")
+        if not tag:
+            return {"success": False, "message": "请指定标签"}
         try:
             if not self._spider_helper:
                 return {"success": False, "message": "爬虫助手未初始化"}
@@ -463,13 +485,20 @@ class ExtendSpider(_PluginBase):
             logger.error(f"添加标签失败：{str(e)}")
             return {"success": False, "message": f"添加标签失败：{str(e)}"}
 
-    def __remove_tag(self, spider_name: str, tag: str) -> Dict[str, Any]:
+    def __remove_tag(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         从指定爬虫删除标签
-        :param spider_name: 爬虫名称
-        :param tag: 标签名称
+        :param params: { spider_name: str, tag: str}
         :return: 操作结果
         """
+        if not self._enabled:
+            return {"success": False, "message": ""}
+        spider_name = params.get("spider_name")
+        if not params.get("spider_name"):
+            return {"success": False, "message": "请指定爬虫名称"}
+        tag = params.get("tag")
+        if not tag:
+            return {"success": False, "message": "请指定标签"}
         try:
             if not self._spider_helper:
                 return {"success": False, "message": "爬虫助手未初始化"}
