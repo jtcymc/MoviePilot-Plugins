@@ -40,7 +40,7 @@
     "name": "ExtendSpider",
     "description": "以插件的方式获取索引器信息，支持更多的站点（需修改app/sites/site_indexer.py和app/sites/sites.py的支持）",
     "labels": "索引器,ExtendSpider",
-    "version": "1.5",
+    "version": "1.5.1",
     "icon": "Extend_Spider.png",
     "author": "shaw",
     "level": 1,
@@ -56,7 +56,8 @@
       "v1.3": "DrissionPage兼容Playwright",
       "v1.3.1": "优化解析逻辑，大幅度提升效率",
       "v1.4": "支持更多网站",
-      "v1.5": "改为联邦插件"
+      "v1.5": "改为联邦插件",
+      "v1.5.1": "优化处理逻辑"
     }
   }
 }

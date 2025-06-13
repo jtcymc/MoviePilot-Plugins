@@ -22,13 +22,6 @@ spider_configs = \
                              "电影", "电视剧", "动漫"
                          ]
                          },
-        "Bt0Spider": {'spider_name': 'Bt0Spider',
-                       'spider_enable': True,
-                       'spider_proxy': False,
-                       'proxy_type': 'playwright',
-                       'spider_url': 'https://www.6bt0.com',
-                       'spider_desc': '不太灵-影视管理系统',
-                       },
         "BtBtlSpider": {'spider_name': 'BtBtlSpider',
                         'spider_enable': True,
                         'spider_proxy': False,
@@ -51,6 +44,13 @@ spider_configs = \
                        'spider_url': 'https://www.btdx8.vip',
                        'spider_desc': '比特大雄_BT电影天堂_最新720P、1080P高清电影BT种子免注册下载网站',
                        },
+        "BtlSpider": {'spider_name': 'BtlSpider',
+                      'spider_enable': True,
+                      'spider_proxy': False,
+                      'proxy_type': 'playwright',
+                      'spider_url': 'https://www.6bt0.com',
+                      'spider_desc': '不太灵-影视管理系统',
+                      },
         "BtttSpider": {'spider_name': 'BtttSpider',
                        'spider_enable': True,
                        'spider_proxy': False,
@@ -99,7 +99,7 @@ class ExtendSpider(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jtcymc/MoviePilot-Plugins/8ed891e0441a79628da01b9618fcd85ba7a88147/icons/Extend_Spider.png"
     # 插件版本
-    plugin_version = "1.5"
+    plugin_version = "1.5.1"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -139,8 +139,9 @@ class ExtendSpider(_PluginBase):
             # 初始化爬虫助手
             if not self._spider_helper:
                 self._spider_helper = SpiderHelper(self._spider_config)
-            # 重新加载配置
-            self.reload_config()
+            else:
+                # 重新加载配置
+                self.reload_config()
 
             logger.info(f"插件初始化完成，当前状态：{'启用' if self._enabled else '禁用'}")
         except Exception as e:
