@@ -51,8 +51,11 @@ jobs:
 
       - name: Copy federation files
         run: |
-          cp extend-spider-moviepilot-plugin-component/dist/assets/__federation* plugins.v2/extendspider/dist/assets/
-          cp extend-spider-moviepilot-plugin-component/dist/assets/_plugin-vue_export* plugins.v2/extendspider/dist/assets/
+          # 复制所有 federation 相关文件和目录
+          cp -r extend-spider-moviepilot-plugin-component/dist/assets/__federation* plugins.v2/extendspider/dist/assets/
+          # 复制所有 vue export 相关文件
+          cp -r extend-spider-moviepilot-plugin-component/dist/assets/_plugin-vue_export* plugins.v2/extendspider/dist/assets/
+          # 复制 remoteEntry.js
           cp extend-spider-moviepilot-plugin-component/dist/assets/remoteEntry.js plugins.v2/extendspider/dist/assets/
 
       - name: Configure Git
