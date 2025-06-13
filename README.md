@@ -122,3 +122,7 @@
 1. 确保网络环境能够正常访问这些站点
 2. 部分站点可能需要配置代理才能访问
 3. 建议定期检查站点可用性
+
+
+![](https://raw.githubusercontent.com/jtcymc/MoviePilot-Plugins/refs/heads/main/docs/imgs/img.png)
+![](https://raw.githubusercontent.com/jtcymc/MoviePilot-Plugins/refs/heads/main/docs/imgs/img_1.png)
