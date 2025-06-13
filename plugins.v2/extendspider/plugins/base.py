@@ -18,7 +18,7 @@ import requests
 import asyncio
 import sys
 import os
-from plugins.extendspider.utils.url import get_magnet_info_from_url
+
 
 
 class _ExtendSpiderBase(metaclass=ABCMeta):
@@ -318,6 +318,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
 
     def _get_link_size(self, link_str: str):
         self._wait_for_interval()
+        from plugins.extendspider.utils.url import get_magnet_info_from_url
         ret = get_magnet_info_from_url(link_str)
         if ret:
             logger.info(f"{self.spider_name}-获取种子信息成功: {link_str} 返回信息: {ret}")
