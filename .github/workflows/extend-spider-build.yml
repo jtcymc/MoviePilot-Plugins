@@ -3,12 +3,16 @@ name: Extend Spider Build
 on:
   push:
     paths:
-      - 'plugins.v2/extendspider/**'
-      - 'package.v2.json'
+      - "plugins.v2/extendspider/**"
+      - "package.v2.json"
   repository_dispatch:
     types: [extend-spider-update]
   workflow_dispatch:
-
+    inputs:
+      some_input:
+        description: "An example input"
+        required: false
+        default: "hello"
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,7 +25,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: "18"
 
       - name: Install dependencies
         run: yarn install
@@ -52,4 +56,4 @@ jobs:
         run: |
           git add plugins.v2/extendspider/dist/assets/
           git commit -m "chore: update extend-spider federation files [skip ci]"
-          git push 
+          git push
