@@ -1,0 +1,55 @@
+name: Extend Spider Build
+
+on:
+  push:
+    paths:
+      - 'plugins.v2/extendspider/**'
+      - 'package.v2.json'
+  repository_dispatch:
+    types: [extend-spider-update]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Clean dist/assets directory
+        run: |
+          rm -rf plugins.v2/extendspider/dist/assets/*
+
+      - name: Clone extend-spider component
+        run: |
+          git clone https://github.com/jtcymc/extend-spider-moviepilot-plugin-component.git
+          cd extend-spider-moviepilot-plugin-component
+          yarn install
+          yarn build
+
+      - name: Copy federation files
+        run: |
+          cp extend-spider-moviepilot-plugin-component/dist/assets/__federation* plugins.v2/extendspider/dist/assets/
+          cp extend-spider-moviepilot-plugin-component/dist/assets/_plugin-vue_export* plugins.v2/extendspider/dist/assets/
+          cp extend-spider-moviepilot-plugin-component/dist/assets/remoteEntry.js plugins.v2/extendspider/dist/assets/
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'github-actions@github.com'
+
+      - name: Commit and push changes
+        run: |
+          git add plugins.v2/extendspider/dist/assets/
+          git commit -m "chore: update extend-spider federation files [skip ci]"
+          git push 
