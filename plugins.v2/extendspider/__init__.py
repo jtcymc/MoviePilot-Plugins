@@ -402,18 +402,29 @@ class ExtendSpider(_PluginBase):
             enabled = sum(1 for spider in self._spider_helper.spider_config.values() if spider.get('spider_enable'))
             disabled = total - enabled
 
-            # 获取所有爬虫的标签
+            # 获取所有爬虫的标签和网址
             all_tags = set()
-            for spider in self._spider_helper.spider_config.values():
+            spider_urls = {}
+            for spider_name, spider in self._spider_helper.spider_config.items():
                 if 'spider_tags' in spider:
                     all_tags.update(spider['spider_tags'])
-
+                # 获取爬虫网址
+                if hasattr(self._spider_helper, 'get_spider_url'):
+                    url = self._spider_helper.get_spider_url(spider_name)
+                    if url:
+                        spider_urls[spider_name] = url
+            for spider_name, spider in self._spider_helper.spiders.items():
+                if hasattr(spider, 'spider_url'):
+                    url = spider.spider_url
+                    if url:
+                        spider_urls[spider_name] = url
             return {
                 "success": True,
                 "total": total,
                 "enabled": enabled,
                 "disabled": disabled,
                 "tags": list(all_tags),
+                "spider_urls": spider_urls,
                 "status": "running" if self._enabled else "stopped"
             }
         except Exception as e:
@@ -537,7 +548,6 @@ class ExtendSpider(_PluginBase):
         """
             拼装插件配置页面，需要返回两块数据：1、页面配置；2、数据结构
         """
-
         return [], {}
 
     def get_page(self) -> List[dict]:
