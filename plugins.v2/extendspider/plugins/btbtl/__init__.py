@@ -48,7 +48,7 @@ class BtBtlSpider(_ExtendSpiderBase):
                 # 等待页面加载完成
                 browser_page.wait_for_load_state("networkidle", timeout=15 * 1000)
                 logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
-                self._wait()
+                self._wait_inner()
                 self.spider_cookie = context.cookies()
                 # 执行搜索
                 browser_page.fill("#txtKeywords", keyword)
@@ -115,7 +115,7 @@ class BtBtlSpider(_ExtendSpiderBase):
     def _get_down_urls(self, detail_url: str, detail_page: Page, down_urls: dict) -> Dict[str, str]:
         # 使用线程池并发获取种子信息
         logger.info(f"{self.spider_name}-开始获取详情页: {detail_url}")
-        self._wait()
+        self._wait_inner()
         detail_page.goto(detail_url)
         detail_page.wait_for_load_state("networkidle", timeout=30 * 1000)
 
@@ -159,7 +159,7 @@ class BtBtlSpider(_ExtendSpiderBase):
                 current_batch_results = []
                 try:
                     for url_idx, down_url in enumerate(url_batch):
-                        self._wait()  # 每个URL处理前等待
+                        self._wait_inner()  # 每个URL处理前等待
                         logger.info(
                             f"{self.spider_name}-线程 {index} 正在处理第 {url_idx + 1}/{len(url_batch)} 个下载页: {down_url}")
 
@@ -224,7 +224,7 @@ class BtBtlSpider(_ExtendSpiderBase):
 
     def _parse_torrent_content(self, down_url: str, detail_page: Page) -> Tuple[bool, Optional[dict]]:
         logger.info(f"{self.spider_name}-解析下载页: {down_url}")
-        self._wait()
+        self._wait_inner()
         detail_page.goto(down_url)
         detail_page.wait_for_load_state("networkidle", timeout=30 * 1000)
 

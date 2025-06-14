@@ -77,8 +77,8 @@ class CiLiXiongSpider(_ExtendSpiderBase):
             # 使用线程池并发处理批次
             with ThreadPoolExecutor(max_workers=min(6, len(url_batches))) as tp:
                 future_to_batch = {
-                    tp.submit(self._get_torrent, browser, batch, idx + 1): (idx, batch)
-                    for idx, batch in enumerate(detail_urls)
+                    tp.submit(self._get_torrent, browser, batch): (idx, batch)
+                    for idx, batch in enumerate(url_batches)
                 }
                 for future in as_completed(future_to_batch):
                     idx, batch = future_to_batch[future]
@@ -94,37 +94,39 @@ class CiLiXiongSpider(_ExtendSpiderBase):
         return results
 
     @retry(Exception, 2, 3, 2, logger=logger)
-    def _get_torrent(self, browser: Chromium, down_url: str, index: int) -> Optional[list]:
+    def _get_torrent(self, browser: Chromium, down_urls: list) -> Optional[list]:
         # self._wait(0.5,1.5)
         new_tab = browser.new_tab()
+        new_tab.set.load_mode.eager()  # 设置加载模式为none
+        results = []
         try:
-            new_tab.set.load_mode.eager()  # 设置加载模式为none
-            new_tab.get(down_url, timeout=20)
-            link_tags = new_tab("css:div .mv_down").eles("tag:a")
-            if not link_tags:
-                return []
-            url_set = set()
-            results = []
-            for a_tag in link_tags:
-                link = a_tag.link
-                if link and link.startswith("magnet") and link not in url_set:
-                    title_info = SearchFilterHelper().parse_title(a_tag.text)
-                    if not title_info.episode:
-                        title_info.episode = SearchFilterHelper().get_episode(a_tag.text)
-                    results.append({
-                        "title": a_tag.text,
-                        "enclosure": link,
-                        "description": a_tag.text,
-                        "size": title_info.size_num
-                    })
-                    url_set.add(link)
-            return results
-        except Exception as e:
-            logger.error(f"{self.spider_name}-详情页:【{down_url}】,获取种子失败: {str(e)} - {traceback.format_exc()}")
-            return []
+            for down_url in down_urls:
+                try:
+                    new_tab.get(down_url, timeout=20)
+                    link_tags = new_tab("css:div .mv_down").eles("tag:a")
+                    if not link_tags:
+                        return []
+                    url_set = set()
+
+                    for a_tag in link_tags:
+                        link = a_tag.link
+                        if link and link.startswith("magnet") and link not in url_set:
+                            title_info = SearchFilterHelper().parse_title(a_tag.text)
+                            if not title_info.episode:
+                                title_info.episode = SearchFilterHelper().get_episode(a_tag.text)
+                            results.append({
+                                "title": a_tag.text,
+                                "enclosure": link,
+                                "description": a_tag.text,
+                                "size": title_info.size_num
+                            })
+                            url_set.add(link)
+                except Exception as e:
+                    logger.error(f"{self.spider_name}-详情页:【{down_url}】,获取种子失败: {str(e)} - {traceback.format_exc()}")
+                    return []
         finally:
             new_tab.close()
-
+        return results
 
 if __name__ == "__main__":
     lou = CiLiXiongSpider({

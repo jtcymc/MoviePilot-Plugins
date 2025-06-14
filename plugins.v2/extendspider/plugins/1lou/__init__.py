@@ -59,7 +59,7 @@ class Bt1louSpider(_ExtendSpiderBase):
 
             tab1.get(self.spider_url)
             logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
-            self._wait()
+            self._wait_inner()
             # 如果起始页大于1，只抓取指定页
             if page > self.spider_page_start:
                 logger.info(
@@ -321,4 +321,4 @@ if __name__ == "__main__":
         'request_interval': (2, 5)  # 设置随机请求间隔，最小2秒，最大5秒
     })
     # 使用直接请求
-    lou.search("师兄啊师兄", 1)
+    lou.search("遮天", 1)
