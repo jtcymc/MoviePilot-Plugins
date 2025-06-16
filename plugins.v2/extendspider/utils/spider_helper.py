@@ -48,7 +48,7 @@ class SpiderHelper(metaclass=SingletonClass):
             检查模块
             """
             if not hasattr(module, 'init_spider') or not hasattr(module, "spider_name"):
-                logger.warning(f"插件 {module.__name__} 不正确")
+                logger.debug(f"插件 {module.__name__} 不正确")
                 return False
             return True
 
@@ -65,7 +65,7 @@ class SpiderHelper(metaclass=SingletonClass):
                 "app.plugins.extendspider.plugins",
                 filter_func=lambda _, obj: check_module(obj)
             )
-        logger.info(f"正在加载爬虫插件：{', '.join(plugin.spider_name for plugin in plugins)} ...")
+        logger.debug(f"正在加载爬虫插件：{', '.join(plugin.spider_name for plugin in plugins)} ...")
         plugins.sort(key=lambda x: x.spider_order if hasattr(x, "spider_order") else 0)
         for plugin in plugins:
             plugin_id = plugin.__name__

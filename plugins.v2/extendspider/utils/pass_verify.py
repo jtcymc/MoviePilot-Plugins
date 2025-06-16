@@ -1,6 +1,7 @@
 import random
 
 from DrissionPage._pages.chromium_page import ChromiumPage
+from DrissionPage._pages.chromium_tab import ChromiumTab
 from DrissionPage._pages.mix_tab import MixTab
 from bs4 import BeautifulSoup
 
@@ -21,7 +22,7 @@ def is_slider_verification_page(html: str) -> bool:
     )
 
 
-def pass_slider_verification(tab: ChromiumPage):
+def pass_slider_verification(tab: ChromiumPage | MixTab | ChromiumTab):
     """
     处理滑块验证
 
