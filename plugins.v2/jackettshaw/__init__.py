@@ -29,7 +29,7 @@ class JackettShaw(_PluginBase):
     # 插件图标
     plugin_icon = "Jackett_A.png"
     # 插件版本
-    plugin_version = "1.2.5"
+    plugin_version = "1.2.7"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -96,6 +96,8 @@ class JackettShaw(_PluginBase):
             # 启动服务
             self._scheduler.print_jobs()
             self._scheduler.start()
+        EventManager().send_event(EventType.SpiderPluginsRload, data={"plugin_id": self.plugin_name})
+
 
     def get_status(self):
         """
@@ -105,7 +107,6 @@ class JackettShaw(_PluginBase):
         if not self._api_key or not self._host:
             return False
         self._indexers = self.get_indexers()
-        EventManager().send_event(EventType.SpiderPluginsRload, data={"plugin_id": self.plugin_name})
         return True if isinstance(self._indexers, list) and len(self._indexers) > 0 else False
 
     def get_state(self) -> bool:

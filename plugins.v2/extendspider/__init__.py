@@ -101,7 +101,7 @@ class ExtendSpider(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jtcymc/MoviePilot-Plugins/8ed891e0441a79628da01b9618fcd85ba7a88147/icons/Extend_Spider.png"
     # 插件版本
-    plugin_version = "1.5.10"
+    plugin_version = "1.5.11"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -143,14 +143,14 @@ class ExtendSpider(_PluginBase):
                 self._spider_helper = SpiderHelper(self._spider_config)
             else:
                 # 重新加载配置
-                self.reload_config()
+                self.reload_config(is_init=True)
             EventManager().send_event(EventType.SpiderPluginsRload, data={"plugin_id": self.plugin_name})
             logger.info(f"插件初始化完成，当前状态：{'启用' if self._enabled else '禁用'}")
         except Exception as e:
             logger.error(f"插件初始化失败：{str(e)}")
             self._spider_helper = None
 
-    def reload_config(self):
+    def reload_config(self, is_init=False):
         """
         重新加载配置
         """
@@ -158,6 +158,8 @@ class ExtendSpider(_PluginBase):
         self._spider_helper.init_config()
         self.get_status()
         self.__update_config()
+        if not is_init:
+            EventManager().send_event(EventType.SpiderPluginsRload, data={"plugin_id": self.plugin_name})
 
     def __update_spider_status(self):
         """
@@ -172,7 +174,7 @@ class ExtendSpider(_PluginBase):
             for spider_name, (success, message) in results.items():
                 if spider_name in self._spider_helper.spider_config:
                     self._spider_helper.spider_config[spider_name]['web_status'] = success
-            logger.info("爬虫状态更新完成")
+            logger.info(f"{self.plugin_name}-爬虫状态更新完成")
         except Exception as e:
             logger.error(f"更新爬虫状态失败：{str(e)}")
 
