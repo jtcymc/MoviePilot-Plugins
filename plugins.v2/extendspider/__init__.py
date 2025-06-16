@@ -101,7 +101,7 @@ class ExtendSpider(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jtcymc/MoviePilot-Plugins/8ed891e0441a79628da01b9618fcd85ba7a88147/icons/Extend_Spider.png"
     # 插件版本
-    plugin_version = "1.5.9"
+    plugin_version = "1.5.10"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -109,7 +109,7 @@ class ExtendSpider(_PluginBase):
     # 插件配置项ID前缀
     plugin_config_prefix = "extend_spider_shaw_"
     # 加载顺序
-    plugin_order = 16
+    plugin_order = 2
     # 可使用的用户级别
     auth_level = 1
     # TODO 爬虫必须要！！！！！！！！！ app/modules/indexer/spider/plugins.py:31
@@ -144,7 +144,7 @@ class ExtendSpider(_PluginBase):
             else:
                 # 重新加载配置
                 self.reload_config()
-
+            EventManager().send_event(EventType.SpiderPluginsRload, data={"plugin_id": self.plugin_name})
             logger.info(f"插件初始化完成，当前状态：{'启用' if self._enabled else '禁用'}")
         except Exception as e:
             logger.error(f"插件初始化失败：{str(e)}")
@@ -158,7 +158,6 @@ class ExtendSpider(_PluginBase):
         self._spider_helper.init_config()
         self.get_status()
         self.__update_config()
-        EventManager().send_event(EventType.SpiderPluginsRload, data={"plugin_id": self.plugin_name})
 
     def __update_spider_status(self):
         """
