@@ -121,74 +121,71 @@ class GyingKSpider(_ExtendSpiderBase):
         new_tab = browser.new_tab()
         new_tab.set.load_mode.none()  # 设置加载模式为none
         results = []
-        try:
-            for down_url in down_urls:
-                try:
-                    new_tab.get(down_url, timeout=20)
-                    new_tab.wait.ele_displayed("css:.down-list", timeout=30)
-                    new_tab.stop_loading()
-                    p_tags = new_tab("css:div .down-list").s_eles("tag:p")
-                    if not p_tags:
-                        return []
-                    url_set = set()
-                    to_down_urls = set()
-                    for p_tag in p_tags:
-                        a_tag = p_tag.s_ele("tag:a")
-                        if not a_tag:
-                            continue
-                        size_str = p_tag.s_ele("css:.size").text
-                        link = a_tag.link
-                        if link.startswith("magnet") and link not in url_set:
-                            # 是磁力直接
-                            title_info = SearchFilterHelper().parse_title(a_tag.text)
-                            if not title_info.size_num:
-                                title_info.size = size_str
-                            loc2 = (By.XPATH, '//li[@class="down-list2"]//i[contains(@title, "做种")]')
-                            seeders_tags = new_tab.ele(loc2).text
-                            results.append({
-                                "title": a_tag.attr("title") or a_tag.text,
-                                "enclosure": link,
-                                "description": a_tag.attr("title") or a_tag.text,
-                                "size": title_info.size_num,
-                                "seeders": int(seeders_tags or 0),
-                            })
-                            url_set.add(link)
-                        elif not link.startswith("magnet") and link not in to_down_urls:
-                            if not link.startswith("http"):
-                                link = f"{self.spider_url}{link}"
-                            to_down_urls.add(link)
+        for down_url in down_urls:
+            try:
+                new_tab.get(down_url, timeout=20)
+                new_tab.wait.ele_displayed("css:.down-list", timeout=30)
+                new_tab.stop_loading()
+                p_tags = new_tab("css:div .down-list").s_eles("tag:p")
+                if not p_tags:
+                    return []
+                url_set = set()
+                to_down_urls = set()
+                for p_tag in p_tags:
+                    a_tag = p_tag.s_ele("tag:a")
+                    if not a_tag:
+                        continue
+                    size_str = p_tag.s_ele("css:.size").text
+                    link = a_tag.link
+                    if link.startswith("magnet") and link not in url_set:
+                        # 是磁力直接
+                        title_info = SearchFilterHelper().parse_title(a_tag.text)
+                        if not title_info.size_num:
+                            title_info.size = size_str
+                        loc2 = (By.XPATH, '//li[@class="down-list2"]//i[contains(@title, "做种")]')
+                        seeders_tags = new_tab.ele(loc2).text
+                        results.append({
+                            "title": a_tag.attr("title") or a_tag.text,
+                            "enclosure": link,
+                            "description": a_tag.attr("title") or a_tag.text,
+                            "size": title_info.size_num,
+                            "seeders": int(seeders_tags or 0),
+                        })
+                        url_set.add(link)
+                    elif not link.startswith("magnet") and link not in to_down_urls:
+                        if not link.startswith("http"):
+                            link = f"{self.spider_url}{link}"
+                        to_down_urls.add(link)
 
-                    if not to_down_urls:
-                        return results
+                if not to_down_urls:
+                    return results
 
-                    # 计算每个线程处理的URL数量
-                    batch_size = max(1, len(to_down_urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL
-                    url_batches = self.chunk_list(list(to_down_urls), batch_size)
+                # 计算每个线程处理的URL数量
+                batch_size = max(1, len(to_down_urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL
+                url_batches = self.chunk_list(list(to_down_urls), batch_size)
 
-                    logger.info(
-                        f"{self.spider_name}-将 {len(to_down_urls)} 个种子下载页分成 {len(url_batches)} 个批次处理")
-                    # 使用线程池并发处理批次
-                    with ThreadPoolExecutor(max_workers=min(6, len(url_batches))) as tp:
-                        future_to_batch = {
-                            tp.submit(self.get_enclosure_by_down, browser, batch): (idx, batch)
-                            for idx, batch in enumerate(url_batches)
-                        }
-                        for future in as_completed(future_to_batch):
-                            idx, batch = future_to_batch[future]
-                            try:
-                                batch_results = future.result()
-                                with self._result_lock:
-                                    results.extend(batch_results)
-                                    logger.info(
-                                        f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理完成，获取到 {len(batch_results)} 个种子")
-                            except Exception as e:
-                                logger.error(
-                                    f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败: {str(e)}")
-                except Exception as e:
-                    logger.error(
-                        f"{self.spider_name}-详情页:【{down_url}】,获取种子失败: {str(e)} - {traceback.format_exc()}")
-        finally:
-            new_tab.close()
+                logger.info(
+                    f"{self.spider_name}-将 {len(to_down_urls)} 个种子下载页分成 {len(url_batches)} 个批次处理")
+                # 使用线程池并发处理批次
+                with ThreadPoolExecutor(max_workers=min(6, len(url_batches))) as tp:
+                    future_to_batch = {
+                        tp.submit(self.get_enclosure_by_down, browser, batch): (idx, batch)
+                        for idx, batch in enumerate(url_batches)
+                    }
+                    for future in as_completed(future_to_batch):
+                        idx, batch = future_to_batch[future]
+                        try:
+                            batch_results = future.result()
+                            with self._result_lock:
+                                results.extend(batch_results)
+                                logger.info(
+                                    f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理完成，获取到 {len(batch_results)} 个种子")
+                        except Exception as e:
+                            logger.error(
+                                f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败: {str(e)}")
+            except Exception as e:
+                logger.error(
+                    f"{self.spider_name}-详情页:【{down_url}】,获取种子失败: {str(e)} - {traceback.format_exc()}")
 
         return results
 
@@ -197,36 +194,32 @@ class GyingKSpider(_ExtendSpiderBase):
         new_tab.set.load_mode.eager()
         results = []
         url_set = set()
-        try:
-            for down_url in down_urls:
-                if down_url in url_set:
+        for down_url in down_urls:
+            if down_url in url_set:
+                continue
+            logger.info(f"{self.spider_name}-正在获取种子信息: {down_url}")
+
+            new_tab.get(down_url, timeout=20)
+            new_tab.wait.ele_displayed("css:.down321", timeout=20)
+            for li_tag in new_tab("css:ul.down321").eles("tag:li"):
+                title = li_tag.s_ele("@tag()=div").text
+                url_tag = li_tag.s_ele("css:span#d2")
+                size_str = li_tag.s_ele("css:div.left").text
+                if not url_tag:
                     continue
-                logger.info(f"{self.spider_name}-正在获取种子信息: {down_url}")
-
-                new_tab.get(down_url, timeout=20)
-                new_tab.wait.ele_displayed("css:.down321", timeout=20)
-                for li_tag in new_tab("css:ul.down321").eles("tag:li"):
-                    title = li_tag.s_ele("@tag()=div").text
-                    url_tag = li_tag.s_ele("css:span#d2")
-                    size_str = li_tag.s_ele("css:div.left").text
-                    if not url_tag:
-                        continue
-                    link = url_tag.attr("data-clipboard-text")
-                    if link.startswith("magnet") and link not in url_set:
-                        title_info = SearchFilterHelper().parse_title(title)
-                        if not title_info.size_num:
-                            title_info.size = size_str
-                        results.append({
-                            "title": title,
-                            "enclosure": link,
-                            "description": title,
-                            "size": title_info.size_num
-                        })
-                        url_set.add(link)
-                new_tab.wait(0.5, 1.5)
-
-        finally:
-            new_tab.close()
+                link = url_tag.attr("data-clipboard-text")
+                if link.startswith("magnet") and link not in url_set:
+                    title_info = SearchFilterHelper().parse_title(title)
+                    if not title_info.size_num:
+                        title_info.size = size_str
+                    results.append({
+                        "title": title,
+                        "enclosure": link,
+                        "description": title,
+                        "size": title_info.size_num
+                    })
+                    url_set.add(link)
+            new_tab.wait(0.5, 1.5)
         return results
 
 

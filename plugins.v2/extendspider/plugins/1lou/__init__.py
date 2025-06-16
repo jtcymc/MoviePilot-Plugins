@@ -233,9 +233,7 @@ class Bt1louSpider(_ExtendSpiderBase):
                 return current_batch_results
             except Exception as ex:
                 logger.error(f"{self.spider_name}-线程 {index} 处理批次失败: {str(ex)}")
-                return []
-            finally:
-                new_tab.close()
+            return []
 
         # 计算每个线程处理的URL数量
         batch_size = max(1, len(detail_urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL

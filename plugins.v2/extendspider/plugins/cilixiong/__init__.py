@@ -97,34 +97,31 @@ class CiLiXiongSpider(_ExtendSpiderBase):
         new_tab = browser.new_tab()
         new_tab.set.load_mode.eager()  # 设置加载模式为none
         results = []
-        try:
-            for down_url in down_urls:
-                try:
-                    new_tab.get(down_url, timeout=20)
-                    link_tags = new_tab("css:div .mv_down").eles("tag:a")
-                    if not link_tags:
-                        return []
-                    url_set = set()
-
-                    for a_tag in link_tags:
-                        link = a_tag.link
-                        if link and link.startswith("magnet") and link not in url_set:
-                            title_info = SearchFilterHelper().parse_title(a_tag.text)
-                            if not title_info.episode:
-                                title_info.episode = SearchFilterHelper().get_episode(a_tag.text)
-                            results.append({
-                                "title": a_tag.text,
-                                "enclosure": link,
-                                "description": a_tag.text,
-                                "size": title_info.size_num
-                            })
-                            url_set.add(link)
-                except Exception as e:
-                    logger.error(
-                        f"{self.spider_name}-详情页:【{down_url}】,获取种子失败: {str(e)} - {traceback.format_exc()}")
+        for down_url in down_urls:
+            try:
+                new_tab.get(down_url, timeout=20)
+                link_tags = new_tab("css:div .mv_down").eles("tag:a")
+                if not link_tags:
                     return []
-        finally:
-            new_tab.close()
+                url_set = set()
+
+                for a_tag in link_tags:
+                    link = a_tag.link
+                    if link and link.startswith("magnet") and link not in url_set:
+                        title_info = SearchFilterHelper().parse_title(a_tag.text)
+                        if not title_info.episode:
+                            title_info.episode = SearchFilterHelper().get_episode(a_tag.text)
+                        results.append({
+                            "title": a_tag.text,
+                            "enclosure": link,
+                            "description": a_tag.text,
+                            "size": title_info.size_num
+                        })
+                        url_set.add(link)
+            except Exception as e:
+                logger.error(
+                    f"{self.spider_name}-详情页:【{down_url}】,获取种子失败: {str(e)} - {traceback.format_exc()}")
+                return []
         return results
 
 

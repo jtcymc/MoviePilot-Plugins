@@ -1,6 +1,5 @@
 import random
 
-import pyautogui
 from DrissionPage._pages.chromium_page import ChromiumPage
 from DrissionPage._pages.mix_tab import MixTab
 from bs4 import BeautifulSoup
@@ -143,6 +142,7 @@ def pass_cloud_flare_verification(tab: MixTab):
                             logger.info(
                                 f"[CloudflareBypass.try_to_click_challenge] Click point [{click_x}, {click_y}]"
                             )
+                            import pyautogui
                             pyautogui.moveTo(
                                 click_x, click_y, duration=2, tween=pyautogui.easeInElastic
                             )
