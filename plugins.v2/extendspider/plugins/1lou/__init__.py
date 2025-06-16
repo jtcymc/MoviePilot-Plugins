@@ -50,7 +50,7 @@ class Bt1louSpider(_ExtendSpiderBase):
             logger.info(f"{self.spider_name}-使用flaresolver代理...")
             self._from_pass_cloud_flare(self.spider_url)
         headless = True
-        browser, display = create_drission_chromium(headless=headless, ua=self.spider_ua)
+        browser = create_drission_chromium(headless=headless, ua=self.spider_ua)
         if self.spider_cookie:
             browser.set.cookies(self.spider_cookie)
         try:
@@ -82,8 +82,6 @@ class Bt1louSpider(_ExtendSpiderBase):
             return []
         finally:
             browser.quit()
-            if display:
-                display.stop()
 
     @staticmethod
     def _parse_total_pages(html_content: str) -> int:

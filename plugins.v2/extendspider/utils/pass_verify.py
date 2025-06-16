@@ -70,11 +70,6 @@ def is_cloud_flare_verification_page(html: str) -> bool:
 def pass_turnstile_verification(driver: ChromiumPage, headless: bool = True):
     if not driver or not is_cloud_flare_verification_page(driver.html):
         return True
-    if headless:
-        from pyvirtualdisplay import Display
-
-        display = Display(visible=False, size=(1920, 1080))
-        display.start()
     try:
         # Where the bypass starts
         logger.info('Starting Cloudflare bypass.')

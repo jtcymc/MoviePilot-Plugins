@@ -83,7 +83,7 @@ class SpiderHelper(metaclass=SingletonClass):
                 plugin_obj = plugin(conf)
                 # 存储运行实例
                 self._extend_running_plugins[plugin_id] = plugin_obj
-                logger.info(f"加载爬虫插件：{plugin_id}")
+                logger.info(f"加载爬虫插件：{plugin_id}成功")
             except Exception as err:
                 logger.error(f"加载爬插件 {plugin_id} 出错：{str(err)} - {traceback.format_exc()}")
 
