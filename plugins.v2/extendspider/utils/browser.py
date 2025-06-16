@@ -5,6 +5,7 @@ from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, 
 from app.core.config import settings
 from playwright_stealth import stealth_sync
 from app.log import logger
+from utils.system import SystemUtils
 
 
 def create_browser(proxy: bool = False, headless: bool = True, ua=None) -> tuple[Browser, BrowserContext]:
@@ -19,25 +20,29 @@ def create_browser(proxy: bool = False, headless: bool = True, ua=None) -> tuple
         tuple[Browser, BrowserContext]: 浏览器实例和上下文
     """
     playwright = sync_playwright().start()
+    args = [
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-site-isolation-trials',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu',
+        '--disable-software-rasterize',
+        '--enable-javascript',
+        '--enable-scripts',
+        '--enable-javascript-harmony',
+        '--no-sandbox'
+    ]
+    if SystemUtils.is_docker():
+        args.append('--headless=new')
     browser = playwright.chromium.launch(
         headless=headless,
         slow_mo=60,
-        args=[
-            '--disable-blink-features=AutomationControlled',
-            '--disable-features=IsolateOrigins,site-per-process',
-            '--disable-site-isolation-trials',
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu',
-            '--disable-software-rasterize',
-            '--enable-javascript',
-            '--enable-scripts',
-            '--enable-javascript-harmony'
-        ]
+        args=args,
     )
 
     context = browser.new_context(
@@ -113,10 +118,12 @@ def create_drission_chromium(proxy: bool = False, headless: bool = True, ua=None
         "--disable-features=FlashDeprecationWarning,EnablePasswordsAccountStorage",
         "--deny-permission-prompts",
         "--disable-gpu",  # 禁用gpu，提高加载速度
-        # '--no-sandbox',
-        "-accept-lang=en-US",
+        "--no-sandbox",
+        "---accept-lang=en-US",
 
     ]
+    if SystemUtils.is_docker():
+        arguments.append('--headless=new')
     for argument in arguments:
         co.set_argument(argument)
     path = find_chromium_path()
@@ -129,7 +136,7 @@ def create_drission_chromium(proxy: bool = False, headless: bool = True, ua=None
 
 def find_chromium_path():
     usr_path = "/usr/bin/google-chrome"
-    if os.path.exists(usr_path):
+    if SystemUtils.is_docker() and os.path.exists(usr_path):
         return usr_path
     search_paths = "/moviepilot/.cache/ms-playwright"
     if os.path.exists(search_paths):
