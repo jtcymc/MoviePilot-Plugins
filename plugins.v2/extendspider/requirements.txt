@@ -1,2 +1,4 @@
 playwright-stealth==1.0.6
 DrissionPage~=4.1.0.18
+pyvirtualdisplay
+pyautogui~=0.9.54

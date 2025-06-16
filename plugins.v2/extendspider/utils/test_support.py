@@ -8,6 +8,7 @@ from cf_clearance import sync_cf_retry, sync_stealth
 from app.core.config import settings
 from app.log import logger
 from plugins.extendspider.utils.browser import create_drission_chromium
+from plugins.extendspider.utils.pass_verify import pass_cloud_flare_verification
 from plugins.extendspider.utils.proxy import FlareSolverrProxy
 
 
@@ -87,20 +88,20 @@ def _get_cookie_and_ua(url: str):
 
 
 def test_drission_page():
-    cookies, ua = _get_cookie_and_ua("https://www.1lou.me/")
-    browser = create_drission_chromium(headless=False, ua=ua)
-    browser.set.cookies(cookies)
+    # cookies, ua = _get_cookie_and_ua("https://www.1lou.me/")
+    browser, display = create_drission_chromium(headless=False)
+    # browser.set.cookies(cookies)
     tab1 = browser.latest_tab
     try:
-        tab1.set.cookies(cookies)
-        tab1.set.load_mode.eager()  # 设置加载模式为none
+        # tab1.set.cookies(cookies)
+        tab1.set.load_mode.none()  # 设置加载模式为none
 
-        tab1.get("https://www.1lou.me/")
+        tab1.get("https://www.dmit.io/cloudflare", timeout=2)
         # ele = tab1.ele('#search_form', timeout=20)  # 查找text包含“中国日报”的元素
         # tab1.stop_loading()  # 主动停止加载
-        # if not pass_cloud_flare_verification(tab1):
-        #     print("验证失败")
-        #     return
+        if not pass_cloud_flare_verification(tab1):
+            print("验证失败")
+            return
 
         # 初始化一个空字符串，用于拼接页面的cookie信息
         cookies = ''
@@ -124,6 +125,8 @@ def test_drission_page():
     finally:
         tab1.close()
         browser.quit()
+        if display:
+            display.stop()
 
 
 if __name__ == "__main__":

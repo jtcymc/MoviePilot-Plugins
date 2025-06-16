@@ -3,9 +3,11 @@ from typing import Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from DrissionPage._base.chromium import Chromium
+from DrissionPage._pages.chromium_page import ChromiumPage
 from bs4 import BeautifulSoup
 from app.log import logger
 from plugins.extendspider.plugins.base import _ExtendSpiderBase
+from plugins.extendspider.utils.pass_verify import pass_turnstile_verification
 from plugins.extendspider.utils.url import xn_url_encode
 from plugins.extendspider.utils.browser import create_drission_chromium
 from app.schemas import SearchContext
@@ -47,19 +49,20 @@ class Bt1louSpider(_ExtendSpiderBase):
         if self.pass_cloud_flare:
             logger.info(f"{self.spider_name}-使用flaresolver代理...")
             self._from_pass_cloud_flare(self.spider_url)
-        browser = create_drission_chromium(headless=True, ua=self.spider_ua)
+        headless = True
+        browser, display = create_drission_chromium(headless=headless, ua=self.spider_ua)
         if self.spider_cookie:
             browser.set.cookies(self.spider_cookie)
-        tab1 = browser.latest_tab
         try:
             # 访问主页并处理 Cloudflare
             logger.info(f"{self.spider_name}-正在访问 {self.spider_url}...")
             # 等待页面加载完成
-            tab1.set.load_mode.eager()  # 设置加载模式为none
-
-            tab1.get(self.spider_url)
+            browser.set.load_mode.eager()  # 设置加载模式为none
+            browser.get(self.spider_url)
             logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
-            self._wait()
+            if not pass_turnstile_verification(browser, headless):
+                logger.warn(f"{self.spider_name}-未通过 Cloudflare 验证")
+            self._wait_inner()
             # 如果起始页大于1，只抓取指定页
             if page > self.spider_page_start:
                 logger.info(
@@ -69,7 +72,7 @@ class Bt1louSpider(_ExtendSpiderBase):
 
             # 执行搜索
             search_url = self.get_search_url(keyword, 1)
-            tab1.get(search_url)
+            browser.get(search_url)
             results = self._parse_search_result_page(keyword, browser, False, ctx)
             logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
             return results
@@ -78,8 +81,9 @@ class Bt1louSpider(_ExtendSpiderBase):
             logger.error(f"搜索过程发生错误: {str(e)}, {traceback.format_exc()}")
             return []
         finally:
-            tab1.close()
             browser.quit()
+            if display:
+                display.stop()
 
     @staticmethod
     def _parse_total_pages(html_content: str) -> int:
@@ -130,19 +134,18 @@ class Bt1louSpider(_ExtendSpiderBase):
             logger.error(f"解析总页数失败: {str(e)}")
             return 1
 
-    def _parse_search_result_page(self, keyword, browser: Chromium, one_page: bool, ctx: SearchContext):
+    def _parse_search_result_page(self, keyword, browser: ChromiumPage, one_page: bool, ctx: SearchContext):
         """ 统计搜索结果页数信息 """
         _processed_titles = set()
         _processed_urls = set()
         detail_urls = {}
-        tab = browser.latest_tab
         # 抓取第一页
-        self._parse_search_page_detail_urls(tab.html, _processed_titles,
+        self._parse_search_page_detail_urls(browser.html, _processed_titles,
                                             _processed_urls, detail_urls)
 
         if not one_page:
             # 解析总页数
-            total_pages = self._parse_total_pages(tab.html)
+            total_pages = self._parse_total_pages(browser.html)
             # 计算需要抓取的页数
             pages_to_fetch = min(total_pages or 1, self.spider_max_load_page)
             logger.info(f"{self.spider_name}-总页数: {total_pages or 1}, 将抓取前 {pages_to_fetch} 页")
@@ -154,8 +157,8 @@ class Bt1louSpider(_ExtendSpiderBase):
                         self._wait_inner(0.5, 1.9)
                         search_url = self.get_search_url(keyword, current_page)
                         logger.info(f"{self.spider_name}-正在抓取第 {current_page} 页: {search_url}")
-                        tab.get(search_url)
-                        self._parse_search_page_detail_urls(tab.html, _processed_titles,
+                        browser.get(search_url)
+                        self._parse_search_page_detail_urls(browser.html, _processed_titles,
                                                             _processed_urls, detail_urls)
                     except Exception as e:
                         logger.error(f"{self.spider_name}-抓取第 {current_page} 页时发生错误: {str(e)}")
@@ -203,7 +206,7 @@ class Bt1louSpider(_ExtendSpiderBase):
             detail_urls[title] = detail_url
         return _processed_titles, detail_urls
 
-    def _parse_detail_results(self, browser: Chromium, detail_urls: set) -> list:
+    def _parse_detail_results(self, browser: ChromiumPage, detail_urls: set) -> list:
         """ 处理详情页 """
         results = []
         _processed_torrent_titles = set()
@@ -321,4 +324,4 @@ if __name__ == "__main__":
         'request_interval': (2, 5)  # 设置随机请求间隔，最小2秒，最大5秒
     })
     # 使用直接请求
-    lou.search("师兄啊师兄", 1)
+    lou.search("遮天", 1)

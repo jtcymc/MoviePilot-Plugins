@@ -1,10 +1,9 @@
 import os
 
-from DrissionPage import ChromiumPage, ChromiumOptions, Chromium
+from DrissionPage import ChromiumPage, ChromiumOptions
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, ViewportSize
 from app.core.config import settings
 from playwright_stealth import stealth_sync
-
 from app.log import logger
 
 
@@ -15,7 +14,7 @@ def create_browser(proxy: bool = False, headless: bool = True, ua=None) -> tuple
     Args:
         proxy: 是否使用代理
         headless: 无头模式
-
+        ua: user-agent
     Returns:
         tuple[Browser, BrowserContext]: 浏览器实例和上下文
     """
@@ -80,7 +79,7 @@ def create_stealth_page(context: BrowserContext) -> Page:
     return page
 
 
-def create_drission_chromium(proxy: bool = False, headless: bool = True, ua=None) -> Chromium:
+def create_drission_chromium(proxy: bool = False, headless: bool = True, ua=None) -> ChromiumPage:
     """
     创建带有反检测功能的页面
 
@@ -100,15 +99,32 @@ def create_drission_chromium(proxy: bool = False, headless: bool = True, ua=None
     # 匿名模式
     co.incognito()
     co.set_user_agent(ua or settings.USER_AGENT)
-    # 无沙盒模式
-    co.set_argument('--no-sandbox')
-    # 禁用gpu，提高加载速度
-    co.set_argument('--disable-gpu')
+    # Arguments to make the browser better for automation and less detectable.
+    arguments = [
+        "--no-first-run",
+        "--force-color-profile=srgb",
+        "--metrics-recording-only",
+        "--password-store=basic",
+        "--use-mock-keychain",
+        "--export-tagged-pdf",
+        "--no-default-browser-check",
+        "--disable-background-mode",
+        "--enable-features=NetworkService,NetworkServiceInProcess,LoadCryptoTokenExtension,PermuteTLSExtensions",
+        "--disable-features=FlashDeprecationWarning,EnablePasswordsAccountStorage",
+        "--deny-permission-prompts",
+        "--disable-gpu",  # 禁用gpu，提高加载速度
+        # '--no-sandbox',
+        "-accept-lang=en-US",
+
+    ]
+    for argument in arguments:
+        co.set_argument(argument)
     path = find_chromium_path()
     logger.info(f"使用自定义的 Chromium 路径：{path}")
     if path:
         co.set_browser_path(path)
-    return Chromium(co)
+    co.auto_port()
+    return ChromiumPage(co)
 
 
 def find_chromium_path():

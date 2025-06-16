@@ -38,7 +38,7 @@ class Dytt8899Spider(_ExtendSpiderBase):
                 # 等待页面加载完成
                 page.wait_for_load_state("domcontentloaded", timeout=30 * 1000)
                 logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
-                self._wait()
+                self._wait_inner()
                 self.spider_cookie = context.cookies()
 
                 # 执行搜索
@@ -120,7 +120,7 @@ class Dytt8899Spider(_ExtendSpiderBase):
                 current_batch_results = []
                 try:
                     for url_idx, detail_url in enumerate(url_batch):
-                        self._wait()  # 每个URL处理前等待
+                        self._wait_inner()  # 每个URL处理前等待
                         logger.info(
                             f"{self.spider_name}-线程 {index} 正在处理第 {url_idx + 1}/{len(url_batch)} 个详情页: {detail_url}")
 
@@ -167,7 +167,7 @@ class Dytt8899Spider(_ExtendSpiderBase):
 
     @retry(Exception, 5, 3, 2, logger=logger)
     def _get_torrent_info(self, page: Page, detail_url: str, ctx: SearchContext = None) -> list:
-        self._wait()
+        self._wait_inner()
         # 访问详情页
         page.goto(detail_url)
         page.wait_for_load_state("domcontentloaded", timeout=30 * 1000)

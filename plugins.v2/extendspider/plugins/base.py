@@ -118,7 +118,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
             proxy_config = {
                 'proxy_type': 'direct',
             }
-        self.spider_proxy_client = ProxyFactory.create_proxy(headers=self.spider_headers,
+        self.spider_proxy_client = ProxyFactory.create_proxy(headers={},
                                                              **proxy_config)
         logger.info(f"{self.spider_name}-初始化代理类型: {proxy_config.get('proxy_type')}, 配置: {proxy_config}")
         # 初始化过滤
