@@ -29,7 +29,7 @@ def pass_slider_verification(tab: ChromiumPage | MixTab | ChromiumTab):
     :param tab: 浏览器标签页对象，用于操作网页
     :return: 如果未触发验证或验证通过，则返回True，否则返回False
     """
-    tab1 =  tab.latest_tab
+    tab1 = tab.latest_tab
     # 检查当前页面是否为验证页面
     if not tab1 or not is_slider_verification_page(tab1.html):
         return True
@@ -73,7 +73,12 @@ def is_cloud_flare_verification_page(html: str) -> bool:
 def pass_turnstile_verification(driver: ChromiumPage, headless: bool = True):
     if not driver or not is_cloud_flare_verification_page(driver.html):
         return True
+    display = None
     try:
+        if headless:
+            from pyvirtualdisplay import Display
+            display = Display(visible=False, size=(1920, 1080))
+            display.start()
         # Where the bypass starts
         logger.info('Starting Cloudflare bypass.')
         cf_bypasser = CloudflareBypasser(driver)
@@ -90,7 +95,9 @@ def pass_turnstile_verification(driver: ChromiumPage, headless: bool = True):
         return True
     except Exception as e:
         logger.error("An error occurred: %s", str(e))
-
+    finally:
+        if display:
+            display.stop()
     return False
 
 
