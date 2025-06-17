@@ -2,7 +2,6 @@ import traceback
 from typing import Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from DrissionPage._base.chromium import Chromium
 from DrissionPage._pages.chromium_page import ChromiumPage
 from bs4 import BeautifulSoup
 from app.log import logger
@@ -62,6 +61,7 @@ class Bt1louSpider(_ExtendSpiderBase):
             logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
             if not pass_turnstile_verification(browser, headless):
                 logger.warn(f"{self.spider_name}-未通过 Cloudflare 验证")
+                return results
             self._wait_inner()
             # 如果起始页大于1，只抓取指定页
             if page > self.spider_page_start:
@@ -320,4 +320,4 @@ if __name__ == "__main__":
         'request_interval': (2, 5)  # 设置随机请求间隔，最小2秒，最大5秒
     })
     # 使用直接请求
-    lou.search("遮天", 1)
+    lou.search("大侠请上功", 1)
