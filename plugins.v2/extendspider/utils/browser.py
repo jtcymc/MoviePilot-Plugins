@@ -142,9 +142,9 @@ def create_drission_chromium(proxy: bool = False, headless: bool = True, ua=None
 def find_chromium_path():
     if not SystemUtils.is_docker():
         return None
-    # usr_path = "/usr/bin/google-chrome"
-    # if os.path.exists(usr_path):
-    #     return usr_path
+    usr_path = "/usr/bin/google-chrome"
+    if os.path.exists(usr_path):
+        return usr_path
     search_paths = "/moviepilot/.cache/ms-playwright"
     if os.path.exists(search_paths):
         for name in os.listdir(search_paths):

@@ -273,7 +273,7 @@ class CloudflareBypasser:
 
             try_count += 1
             self.driver.refresh(True)
-            time.sleep(random.uniform(1, 3))
+            time.sleep(1.5)
 
         if self.is_bypassed():
             logger.info("Bypass successful.")
