@@ -190,7 +190,7 @@ from DrissionPage import ChromiumPage
 
 
 class CloudflareBypasser:
-    def __init__(self, driver: ChromiumPage, max_retries=-1, log=True):
+    def __init__(self, driver: ChromiumPage, max_retries=3, log=True):
         self.driver = driver
         self.max_retries = max_retries
         self.log = log
@@ -276,7 +276,7 @@ class CloudflareBypasser:
             self.click_verification_button()
 
             try_count += 1
-            time.sleep(2)
+            time.sleep(1,3)
 
         if self.is_bypassed():
             self.log_message("Bypass successful.")
