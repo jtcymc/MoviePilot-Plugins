@@ -54,7 +54,8 @@ class CiLiXiongSpider(_ExtendSpiderBase):
             browser.quit()
 
     def _parse_search_result(self, browser: ChromiumPage, ctx: SearchContext):
-        browser.wait.ele_displayed("条符合搜索条件", timeout=20)
+        if not browser.wait.ele_displayed("条符合搜索条件", timeout=20):
+            return []
         a_tags = browser("css=div .align-items-stretch").eles("t:a")
         if not a_tags:
             logger.warn(f"{self.spider_name}-没有搜索结果")

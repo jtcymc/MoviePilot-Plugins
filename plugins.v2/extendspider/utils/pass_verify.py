@@ -29,20 +29,23 @@ def pass_slider_verification(tab: ChromiumPage | MixTab | ChromiumTab):
     :param tab: 浏览器标签页对象，用于操作网页
     :return: 如果未触发验证或验证通过，则返回True，否则返回False
     """
+    tab1 =  tab.latest_tab
     # 检查当前页面是否为验证页面
-    if not tab or not is_slider_verification_page(tab.html):
+    if not tab1 or not is_slider_verification_page(tab1.html):
         return True
     logger.info("触发滑块验证码，正在处理...")
     # 获取滑块起始和结束位置
-    handler = tab.ele("#handler")
-    input_box = tab.ele("#input")
+    handler = tab1.ele("#handler")
+    if not handler:
+        return True
+    input_box = tab1.ele("#input")
     # 定位滑块元素并鼠标左键按住
-    tab.actions.hold(handler)
+    tab1.actions.hold(handler)
     # 定位class变化后的滑块元素并向右拖动500像素
-    tab.actions.hold(handler).right(500).release()
-    tab.wait(0.5, 2.5)
+    tab1.actions.hold(handler).right(500).release()
+    tab1.wait(0.5, 2.5)
     # 再次校验页面是否仍为验证页面
-    return not is_slider_verification_page(tab.html)
+    return not is_slider_verification_page(tab1.html)
 
 
 def is_cloud_flare_verification_page(html: str) -> bool:
@@ -104,7 +107,8 @@ def pass_cloud_flare_verification(tab: MixTab):
     logger.info("触发CloudFlare验证码，正在处理...")
     max_retries = 5
     retries = 0
-    tab.wait.ele_displayed("x://iframe", timeout=25)
+    if not tab.wait.ele_displayed("x://iframe", timeout=25):
+        return False
     while retries < max_retries:
         try:
             if tab.ele('x://div[@id="eIfwt6"]', timeout=15):

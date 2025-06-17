@@ -40,20 +40,18 @@ class GyingKSpider(_ExtendSpiderBase):
             logger.info(f"{self.spider_name}-使用flaresolver代理...")
             self._from_pass_cloud_flare(self.spider_url)
         browser = create_drission_chromium(headless=True, ua=self.spider_ua)
-        if not self.spider_cookie:
-            self.to_login(browser)
+        if not self.spider_cookie and not self.to_login(browser):
+            return results
         try:
-            # self._wait(0.5, 1)
             # 访问主页并处理 Cloudflare
             logger.info(f"{self.spider_name}-正在访问 {self.spider_url}...")
             # 等待页面加载完成
             browser.set.load_mode.eager()  # 设置加载模式为none
-            # tab1.get(self.spider_url)
-            # logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
             browser.wait(0.5, 1.2)
             browser.get(self.get_search_url(keyword, page))
-            if "游客无权访问此页面，请登录！" in browser.html:
-                self.to_login(browser)
+            if "游客无权访问此页面，请登录！" in browser.html and not self.to_login(browser):
+                return results
+            logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
             return self._parse_search_result(browser, ctx)
         except Exception as e:
             logger.error(f"{self.spider_name}-搜索失败: {str(e)} - {traceback.format_exc()}")
@@ -65,22 +63,33 @@ class GyingKSpider(_ExtendSpiderBase):
         logger.info(f"{self.spider_name}-开始登录...")
 
         browser.get(f"{self.spider_url}/user/login/", timeout=20)
-        browser.wait.ele_displayed("css:input[name='username']", timeout=20)
+        if not browser.wait.ele_displayed("css:input[name='username']", timeout=20):
+            logger.warn(f"{self.spider_name}-登录失败")
+            return False
         browser.ele("css:input[name='username']").input(self.spider_username)
         browser.wait(0.5, 1.2)
         browser.ele("css:.popup-content .popup-footer button").click()
         browser.wait(0.5, 0.6)
         browser.ele("css:input[name='password']").input(f"{self.spider_password}\n")
         browser.ele("css:button[type='submit']").click()
-        browser.wait.ele_displayed("最近更新的电影", timeout=20)
+        if not browser.wait.ele_displayed("最近更新的电影", timeout=20):
+            logger.warn(f"{self.spider_name}-登录失败")
+            return False
         self.spider_cookie = browser.cookies()
         if self.spider_cookie:
             logger.info(f"{self.spider_name}-登录成功")
             browser.set.cookies(self.spider_cookie)
+        return True
 
     def _parse_search_result(self, browser: ChromiumPage, ctx: SearchContext):
-        browser.wait.ele_displayed("css=.search_head", timeout=20)
-        a_tags = browser("css:.sr_lists").eles("t:a")
+        if not browser.wait.ele_displayed("css=.search_head", timeout=20):
+            logger.warn(f"{self.spider_name}-没有搜索结果")
+            return []
+        sr_ele = browser.ele("css:.sr_lists", timeout=20)
+        if not sr_ele:
+            logger.warn(f"{self.spider_name}-没有搜索结果")
+            return []
+        a_tags = sr_ele.eles("t:a")
         if not a_tags:
             logger.warn(f"{self.spider_name}-没有搜索结果")
             return []
@@ -124,7 +133,9 @@ class GyingKSpider(_ExtendSpiderBase):
         for down_url in down_urls:
             try:
                 new_tab.get(down_url, timeout=20)
-                new_tab.wait.ele_displayed("css:.down-list", timeout=30)
+                if not new_tab.wait.ele_displayed("css:.down-list", timeout=20):
+                    new_tab.stop_loading()
+                    continue
                 new_tab.stop_loading()
                 p_tags = new_tab("css:div .down-list").s_eles("tag:p")
                 if not p_tags:
