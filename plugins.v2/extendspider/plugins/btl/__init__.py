@@ -53,12 +53,12 @@ class BtlSpider(_ExtendSpiderBase):
             browser.get(search_url)
             packet = browser.listen.wait(timeout=60)
             if not packet:
-                logger.warn(f"没有搜索到数据，url:【{search_url}】")
+                logger.warn(f"{self.spider_name}-没有搜索到数据，url:【{search_url}】")
                 return results
                 # 监听的url
             resp = packet.response
             if resp.status != 200 or not resp.body:
-                logger.warn(f"搜索数据获取失败，status:【{resp.status}】，url:【{search_url}】")
+                logger.warn(f"{self.spider_name}-搜索数据获取失败，status:【{resp.status}】，url:【{search_url}】")
                 return results
             json_data = resp.body.get("data")
             if json_data and (json_data.get("total", 0) > 0 or len(json_data.get("data", [])) > 0):
@@ -78,6 +78,8 @@ class BtlSpider(_ExtendSpiderBase):
         :param data: 数据字典，可能包含 "IMDB_number" 和 "doub_id"
         :return: 如果存在交集或 ctx/data/ctx.media_info 为空，则返回 True
         """
+        if not ids2:
+            return True
 
         # 提取并标准化 data 中的 IDs
         ids1 = [
@@ -151,10 +153,6 @@ class BtlSpider(_ExtendSpiderBase):
                 new_tab.get(down_url, timeout=20)
                 new_tab.scroll.to_bottom()
                 packet = new_tab.listen.wait(1, timeout=60)
-                if not pass_slider_verification(new_tab):
-                    logger.warn(f"详情页:【{down_url}】触发验证,通过校验失败！")
-                    return []
-
                 new_tab.listen.stop()
                 if not packet:
                     logger.warn(f"详情页:【{down_url}】,没有捕获到数据，url:【{listen_url}】")

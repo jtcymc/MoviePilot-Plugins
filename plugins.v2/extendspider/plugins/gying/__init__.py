@@ -132,8 +132,8 @@ class GyingKSpider(_ExtendSpiderBase):
         results = []
         for down_url in down_urls:
             try:
-                new_tab.get(down_url, timeout=20)
-                if not new_tab.wait.ele_displayed("css:.down-list", timeout=20):
+                new_tab.get(down_url)
+                if not new_tab.wait.ele_displayed("css:.down-list", timeout=40):
                     new_tab.stop_loading()
                     continue
                 new_tab.stop_loading()

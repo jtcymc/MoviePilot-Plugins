@@ -122,6 +122,11 @@ def create_drission_chromium(proxy: bool = False, headless: bool = True, ua=None
         "---accept-lang=en-US",
 
     ]
+    # 阻止“自动保存密码”的提示气泡
+    co.set_pref('credentials_enable_service', False)
+
+    # 阻止“要恢复页面吗？Chrome未正确关闭”的提示气泡
+    co.set_argument('--hide-crash-restore-bubble')
     if SystemUtils.is_docker():
         arguments.append('--headless=new')
     for argument in arguments:
@@ -143,7 +148,6 @@ def find_chromium_path():
     search_paths = "/moviepilot/.cache/ms-playwright"
     if os.path.exists(search_paths):
         for name in os.listdir(search_paths):
-            logger.info(f"正在搜索 Chromium 路径：{name}")
             if name.startswith("chromium-"):
                 chromium_path = os.path.join(search_paths, name, "chrome-linux", "chrome")
                 if os.path.exists(chromium_path):
