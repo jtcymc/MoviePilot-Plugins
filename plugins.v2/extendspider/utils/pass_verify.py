@@ -1,4 +1,5 @@
 import random
+import traceback
 
 from DrissionPage._pages.chromium_page import ChromiumPage
 from DrissionPage._pages.chromium_tab import ChromiumTab
@@ -94,7 +95,7 @@ def pass_turnstile_verification(driver: ChromiumPage, headless: bool = True):
         time.sleep(5)
         return True
     except Exception as e:
-        logger.error("An error occurred: %s", str(e))
+        logger.error(f"An error occurred: {str(e)},{traceback.format_exc()}")
     finally:
         if display:
             display.stop()
