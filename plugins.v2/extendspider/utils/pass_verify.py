@@ -7,6 +7,7 @@ from DrissionPage._pages.mix_tab import MixTab
 from bs4 import BeautifulSoup
 
 from app.log import logger
+from utils.system import SystemUtils
 
 
 def is_slider_verification_page(html: str) -> bool:
@@ -76,7 +77,7 @@ def pass_turnstile_verification(driver: ChromiumPage, headless: bool = True):
         return True
     display = None
     try:
-        if headless:
+        if headless and SystemUtils.is_docker():
             from pyvirtualdisplay import Display
             display = Display(visible=False, size=(1920, 1080))
             display.start()
@@ -92,7 +93,7 @@ def pass_turnstile_verification(driver: ChromiumPage, headless: bool = True):
         logger.info("Title of the page: %s", driver.title)
 
         # Sleep for a while to let the user see the result if needed
-        time.sleep(5)
+        time.sleep(1)
         return True
     except Exception as e:
         logger.error(f"An error occurred: {str(e)},{traceback.format_exc()}")

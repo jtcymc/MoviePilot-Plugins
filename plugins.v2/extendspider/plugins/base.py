@@ -20,7 +20,6 @@ import sys
 import os
 
 
-
 class _ExtendSpiderBase(metaclass=ABCMeta):
     """
         插件爬虫基类
@@ -73,7 +72,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     spider_ua = ""
 
     def __init__(self, config: dict = None):
-        self._plugin_name = config.get("plugin_name","ExtendSpider")
+        self._plugin_name = config.get("plugin_name", "ExtendSpider")
         self.spider_name = config.get("spider_name")
         self.spider_desc = config.get("spider_desc")
         self.spider_enable = config.get("spider_enable")
@@ -150,6 +149,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         with self._request_result_lock:  # 使用请求锁确保间隔时间正确执行
             delay = random.uniform(min_delay, max_delay) if max_delay else random.uniform(*self.spider_request_interval)
             time.sleep(delay)
+
     def _wait_inner(self, min_delay: float = None, max_delay: float = None):
         """等待随机间隔时间"""
         delay = random.uniform(min_delay, max_delay) if max_delay else random.uniform(*self.spider_request_interval)
@@ -369,3 +369,4 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
 
         self.spider_cookie = cookies
         self.spider_ua = response.user_agent if hasattr(response, "user_agent") else self.spider_ua
+        self.spider_headers["User-Agent"] = self.spider_ua

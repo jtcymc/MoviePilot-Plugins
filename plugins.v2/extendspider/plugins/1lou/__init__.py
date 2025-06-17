@@ -58,10 +58,10 @@ class Bt1louSpider(_ExtendSpiderBase):
             # 等待页面加载完成
             browser.set.load_mode.eager()  # 设置加载模式为none
             browser.get(self.spider_url)
-            logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
             if not pass_turnstile_verification(browser, headless):
                 logger.warn(f"{self.spider_name}-未通过 Cloudflare 验证")
                 return results
+            logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
             self._wait_inner()
             # 如果起始页大于1，只抓取指定页
             if page > self.spider_page_start:
