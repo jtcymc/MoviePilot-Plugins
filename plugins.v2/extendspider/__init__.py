@@ -109,7 +109,7 @@ class ExtendSpider(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jtcymc/MoviePilot-Plugins/8ed891e0441a79628da01b9618fcd85ba7a88147/icons/Extend_Spider.png"
     # 插件版本
-    plugin_version = "1.5.19"
+    plugin_version = "1.5.20"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
@@ -141,10 +141,30 @@ class ExtendSpider(_PluginBase):
                 self._enabled = config.get("enabled")
                 self._onlyonce = config.get("onlyonce")
                 self._cron = config.get("cron")
-                self._spider_config = config.get("spider_config") if config.get("spider_config") else copy(
-                    spider_configs)
-            else:
-                self._spider_config = copy(spider_configs)
+                old_spider_config = config.get("spider_config") or copy(spider_configs)
+
+                # 初始化 spider_config
+                if not self._spider_helper:
+                    # 如果是首次初始化或没有 helper，则直接使用旧配置或默认配置
+                    self._spider_config = copy(old_spider_config)
+                else:
+                    # 版本不一致时进行合并更新
+                    if self.plugin_version != old_spider_config.get("plugin_version"):
+                        logger.info("检测到插件版本更新，正在合并配置...")
+                        for spider_name, default_config in spider_configs.items():
+                            if spider_name in old_spider_config:
+                                old_config = old_spider_config[spider_name]
+                                merged_config = copy(default_config)
+
+                                # 合并逻辑：仅保留旧配置中非空字符串的字段
+                                for key, value in old_config.items():
+                                    if isinstance(value, str) and value.strip() != "":
+                                        merged_config[key] = value
+
+                                # 替换为合并后的配置
+                                old_spider_config[spider_name] = merged_config
+
+                    self._spider_config = copy(old_spider_config)
 
             # 初始化爬虫助手
             if not self._spider_helper:

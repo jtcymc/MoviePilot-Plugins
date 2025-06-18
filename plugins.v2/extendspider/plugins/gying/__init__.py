@@ -42,7 +42,7 @@ class GyingKSpider(_ExtendSpiderBase):
         if self.pass_cloud_flare:
             logger.info(f"{self.spider_name}-使用flaresolver代理...")
             self._from_pass_cloud_flare(self.spider_url)
-        tab = self.browser.new_tab()
+        tab = self.browser.new_tab(self.spider_url)
         if not self.spider_cookie and not self.to_login(tab):
             return results
         try:
@@ -50,7 +50,7 @@ class GyingKSpider(_ExtendSpiderBase):
             logger.info(f"{self.spider_name}-正在访问 {self.spider_url}...")
             # 等待页面加载完成
             tab.set.load_mode.eager()  # 设置加载模式为none
-            tab.wait(0.5, 1.2)
+            self._wait_inner(0.5, 1.2)
             tab.get(self.get_search_url(keyword, page))
             if "游客无权访问此页面，请登录！" in tab.html and not self.to_login(tab):
                 return results
@@ -71,9 +71,12 @@ class GyingKSpider(_ExtendSpiderBase):
             return False
         browser.ele("css:input[name='username']").input(self.spider_username)
         browser.wait(0.5, 1.2)
-        browser.ele("css:.popup-content .popup-footer button").click()
-        browser.wait(0.5, 0.6)
+        popup_btn = browser.ele("css:.popup-content .popup-footer button")
+        if popup_btn:
+            popup_btn.click()
+        browser.wait(0.5, 0.9)
         browser.ele("css:input[name='password']").input(f"{self.spider_password}\n")
+        browser.wait(0.5, 0.9)
         browser.ele("css:button[type='submit']").click()
         if not browser.wait.ele_displayed("最近更新的电影", timeout=20):
             logger.warn(f"{self.spider_name}-登录失败")
@@ -130,13 +133,17 @@ class GyingKSpider(_ExtendSpiderBase):
 
     @retry(Exception, 2, 3, 2, logger=logger)
     def _get_torrent(self, down_urls: list) -> Optional[list]:
-        new_tab = self.browser.new_tab()
-        new_tab.set.load_mode.none()  # 设置加载模式为none
+        self._wait_inner(0.5, 1.2)
+        new_tab = None
         results = []
         try:
             for down_url in down_urls:
                 try:
-                    new_tab.get(down_url)
+                    if not new_tab:
+                        new_tab = self.browser.new_tab(down_url)
+                        new_tab.set.load_mode.none()  # 设置加载模式为none
+                    else:
+                        new_tab.get(down_url)
                     if not new_tab.wait.ele_displayed("css:.down-list", timeout=40):
                         new_tab.stop_loading()
                         continue
@@ -202,12 +209,12 @@ class GyingKSpider(_ExtendSpiderBase):
                     logger.error(
                         f"{self.spider_name}-详情页:【{down_url}】,获取种子失败: {str(e)} - {traceback.format_exc()}")
         finally:
-            new_tab.close()
+            if new_tab:
+                new_tab.close()
         return results
 
     def get_enclosure_by_down(self, down_urls: list) -> list:
-        new_tab = self.browser.new_tab()
-        new_tab.set.load_mode.eager()
+        new_tab = None
         results = []
         url_set = set()
         try:
@@ -215,8 +222,11 @@ class GyingKSpider(_ExtendSpiderBase):
                 if down_url in url_set:
                     continue
                 logger.info(f"{self.spider_name}-正在获取种子信息: {down_url}")
-
-                new_tab.get(down_url, timeout=20)
+                if not new_tab:
+                    new_tab = self.browser.new_tab(down_url)
+                    new_tab.set.load_mode.none()  # 设置加载模式为none
+                else:
+                    new_tab.get(down_url)
                 new_tab.wait.ele_displayed("css:.down321", timeout=20)
                 for li_tag in new_tab("css:ul.down321").eles("tag:li"):
                     title = li_tag.s_ele("@tag()=div").text
@@ -238,7 +248,8 @@ class GyingKSpider(_ExtendSpiderBase):
                         url_set.add(link)
                 new_tab.wait(0.5, 1.5)
         finally:
-            new_tab.close()
+            if new_tab:
+                new_tab.close()
         return results
 
 

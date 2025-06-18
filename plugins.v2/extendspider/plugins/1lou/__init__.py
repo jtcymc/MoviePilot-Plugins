@@ -2,11 +2,9 @@ import traceback
 from typing import Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from DrissionPage._pages.chromium_tab import ChromiumTab
 from bs4 import BeautifulSoup
 from app.log import logger
 from plugins.extendspider.plugins.base import _ExtendSpiderBase
-from plugins.extendspider.utils.pass_verify import pass_turnstile_verification
 from plugins.extendspider.utils.url import xn_url_encode
 from app.schemas import SearchContext
 import threading
@@ -43,43 +41,35 @@ class Bt1louSpider(_ExtendSpiderBase):
         if not keyword:
             logger.warning(f"{self.spider_name}-搜索关键词为空")
             return []
-        if not self.browser:
-            logger.warn(f"{self.spider_name}-未初始化浏览器")
-            return []
         results = []
         if self.pass_cloud_flare:
-            logger.info(f"{self.spider_name}-使用flaresolver代理...")
-            self._from_pass_cloud_flare(self.spider_url)
-        tab = self.browser.new_tab(self.spider_url)
-        # 等待页面加载完成
-        tab.set.load_mode.eager()  # 设置加载模式为none
-        try:
             # 访问主页并处理 Cloudflare
             logger.info(f"{self.spider_name}-正在访问 {self.spider_url}...")
-            if not pass_turnstile_verification(tab, self.spider_headers):
-                logger.warn(f"{self.spider_name}-未通过 Cloudflare 验证")
-                return results
+            self._from_pass_cloud_flare(self.spider_url)
+        try:
             logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
             self._wait_inner()
             # 如果起始页大于1，只抓取指定页
             if page > self.spider_page_start:
+                search_url = self.get_search_url(keyword, page)
+                res = self.spider_proxy_client.request("GET", search_url)
+                html = res.content
                 logger.info(
                     f"{self.spider_name}-指定页码 {page} 大于起始页 {self.spider_page_start}，只抓取指定页")
-                results.extend(self._parse_search_result_page(keyword, tab, True, ctx))
+                results.extend(self._parse_search_result_page(keyword, html, True, ctx))
                 return results
 
             # 执行搜索
             search_url = self.get_search_url(keyword, 1)
-            tab.get(search_url)
-            results = self._parse_search_result_page(keyword, tab, False, ctx)
+            res = self.spider_proxy_client.request("GET", search_url)
+            html = res.content
+            results = self._parse_search_result_page(keyword, html, False, ctx)
             logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
             return results
 
         except Exception as e:
             logger.error(f"搜索过程发生错误: {str(e)}, {traceback.format_exc()}")
             return []
-        finally:
-            tab.close()
 
     @staticmethod
     def _parse_total_pages(html_content: str) -> int:
@@ -130,18 +120,18 @@ class Bt1louSpider(_ExtendSpiderBase):
             logger.error(f"解析总页数失败: {str(e)}")
             return 1
 
-    def _parse_search_result_page(self, keyword, tab: ChromiumTab, one_page: bool, ctx: SearchContext):
+    def _parse_search_result_page(self, keyword, html: str, one_page: bool, ctx: SearchContext):
         """ 统计搜索结果页数信息 """
         _processed_titles = set()
         _processed_urls = set()
         detail_urls = {}
         # 抓取第一页
-        self._parse_search_page_detail_urls(tab.html, _processed_titles,
+        self._parse_search_page_detail_urls(html, _processed_titles,
                                             _processed_urls, detail_urls)
 
         if not one_page:
             # 解析总页数
-            total_pages = self._parse_total_pages(tab.html)
+            total_pages = self._parse_total_pages(html)
             # 计算需要抓取的页数
             pages_to_fetch = min(total_pages or 1, self.spider_max_load_page)
             logger.info(f"{self.spider_name}-总页数: {total_pages or 1}, 将抓取前 {pages_to_fetch} 页")
@@ -153,8 +143,9 @@ class Bt1louSpider(_ExtendSpiderBase):
                         self._wait_inner(0.5, 1.9)
                         search_url = self.get_search_url(keyword, current_page)
                         logger.info(f"{self.spider_name}-正在抓取第 {current_page} 页: {search_url}")
-                        tab.get(search_url)
-                        self._parse_search_page_detail_urls(tab.html, _processed_titles,
+                        res = self.spider_proxy_client.request("GET", search_url)
+                        html = res.content
+                        self._parse_search_page_detail_urls(html, _processed_titles,
                                                             _processed_urls, detail_urls)
                     except Exception as e:
                         logger.error(f"{self.spider_name}-抓取第 {current_page} 页时发生错误: {str(e)}")
@@ -212,16 +203,15 @@ class Bt1louSpider(_ExtendSpiderBase):
             return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
 
         def process_url_batch(url_batch, index):
-            new_tab = self.browser.new_tab(url_batch[0])
-            new_tab.set.load_mode.eager()
             current_batch_results = []
             try:
                 for url_idx, detail_url in enumerate(url_batch):
                     self._wait_inner(1.5, 2.9)
                     logger.info(
                         f"{self.spider_name}-线程 {index} 正在处理第 {url_idx + 1}/{len(url_batch)} 个详情页: {detail_url}")
-                    new_tab.get(detail_url)
-                    state, torrent_list = self._get_torrent_info(new_tab.html, _processed_torrent_titles)
+                    res = self.spider_proxy_client.request("GET", detail_url)
+                    html = res.content
+                    state, torrent_list = self._get_torrent_info(html, _processed_torrent_titles)
                     if state:
                         current_batch_results.extend(torrent_list)
                         logger.info(
@@ -229,8 +219,6 @@ class Bt1louSpider(_ExtendSpiderBase):
                 return current_batch_results
             except Exception as ex:
                 logger.error(f"{self.spider_name}-线程 {index} 处理批次失败: {str(ex)}")
-            finally:
-                new_tab.close()
             return []
 
         # 计算每个线程处理的URL数量
@@ -318,7 +306,7 @@ if __name__ == "__main__":
             'flaresolverr_url': 'http://192.168.68.115:8191'
         },
         'request_interval': (2, 5),
-        'use_drission_browser': True,
+        'use_drission_browser': False,
         'spider_headless': False
     })
     # 使用直接请求

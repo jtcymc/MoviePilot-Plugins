@@ -143,13 +143,18 @@ class BtlSpider(_ExtendSpiderBase):
     @retry(Exception, 2, 3, 2, logger=logger)
     def _get_torrent(self, down_urls: list) -> Optional[list]:
         results = []
-        new_tab = self.browser.new_tab()
+        new_tab = None
+        listen_url = "api/v1/getVideoDetail"
         try:
             for down_url in down_urls:
                 try:
-                    listen_url = "api/v1/getVideoDetail"
-                    new_tab.listen.start(listen_url)
-                    new_tab.get(down_url, timeout=20)
+                    if not new_tab:
+                        new_tab = self.browser.new_tab(down_url)
+                        new_tab.listen.start(listen_url)
+                        new_tab.set.load_mode.none()  # 设置加载模式为none
+                    else:
+                        new_tab.listen.start(listen_url)
+                        new_tab.get(down_url)
                     new_tab.scroll.to_bottom()
                     packet = new_tab.listen.wait(1, timeout=60)
                     new_tab.listen.stop()
@@ -190,7 +195,8 @@ class BtlSpider(_ExtendSpiderBase):
                     logger.error(
                         f"{self.spider_name}-详情页:【{down_url}】,获取种子失败: {str(e)} - {traceback.format_exc()}")
         finally:
-            new_tab.close()
+            if new_tab:
+                new_tab.close()
         return results
 
 

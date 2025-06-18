@@ -364,7 +364,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
                     # 更新原始对象
                     result['size'] = size
 
-    def _from_pass_cloud_flare(self, url):
+    def _from_pass_cloud_flare(self,  url):
         # 发请求获取 cookies
         response = self.spider_proxy_client.request('GET', url)
         if not response.cookies:
@@ -386,7 +386,3 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         self.spider_cookie = cookies
         self.spider_ua = response.user_agent if hasattr(response, "user_agent") else self.spider_ua
         self.spider_headers["User-Agent"] = self.spider_ua
-
-        if self.browser:
-            self.browser.set.cookies(cookies)
-            self.browser.set.user_agent(self.spider_ua)
