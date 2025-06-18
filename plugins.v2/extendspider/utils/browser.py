@@ -142,6 +142,7 @@ def create_drission_chromium(proxy: bool = False, headless: bool = True, ua=None
 def find_chromium_path():
     if not SystemUtils.is_docker():
         return None
+    logger.info("正在寻找Docker容器中 Chromium 浏览器路径...")
     usr_path = "/usr/bin/google-chrome"
     if os.path.exists(usr_path):
         return usr_path

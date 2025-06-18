@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from DrissionPage._pages.chromium_page import ChromiumPage
+from DrissionPage._pages.chromium_tab import ChromiumTab
 
 from app.log import logger
 from helper.search_filter import SearchFilterHelper
@@ -27,33 +28,34 @@ class CiLiXiongSpider(_ExtendSpiderBase):
         if not keyword:
             logger.warning(f"{self.spider_name}-搜索关键词为空")
             return results
+        if not self.browser:
+            logger.warn(f"{self.spider_name}-未初始化浏览器")
+            return results
         if self.pass_cloud_flare:
             logger.info(f"{self.spider_name}-使用flaresolver代理...")
             self._from_pass_cloud_flare(self.spider_url)
-        browser = create_drission_chromium(headless=True, ua=self.spider_ua)
-        if self.spider_cookie:
-            browser.set.cookies(self.spider_cookie)
+        tab = self.browser.new_tab()
         try:
             self._wait(0.5, 1)
             # 访问主页并处理 Cloudflare
             logger.info(f"{self.spider_name}-正在访问 {self.spider_url}...")
             # 等待页面加载完成
-            browser.set.load_mode.eager()  # 设置加载模式为none
-            browser.get(self.spider_url)
+            tab.set.load_mode.eager()  # 设置加载模式为none
+            tab.get(self.spider_url)
             logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
-            search_ele = browser.ele('x://form[@id="searchform"]//input[@name="keyboard"]', timeout=20)
+            search_ele = tab.ele('x://form[@id="searchform"]//input[@name="keyboard"]', timeout=20)
             if not search_ele:
                 logger.error(f"{self.spider_name}-未找到搜索框")
                 return results
             search_ele.input(f"{keyword}\n")
-            return self._parse_search_result(browser, ctx)
+            return self._parse_search_result(tab, ctx)
         except Exception as e:
             logger.error(f"{self.spider_name}-搜索失败: {str(e)} - {traceback.format_exc()}")
             return results
         finally:
-            browser.quit()
+            tab.close()
 
-    def _parse_search_result(self, browser: ChromiumPage, ctx: SearchContext):
+    def _parse_search_result(self, browser: ChromiumPage | ChromiumTab, ctx: SearchContext):
         if not browser.wait.ele_displayed("条符合搜索条件", timeout=20):
             return []
         a_tags = browser("css=div .align-items-stretch").eles("t:a")
@@ -76,7 +78,7 @@ class CiLiXiongSpider(_ExtendSpiderBase):
             # 使用线程池并发处理批次
             with ThreadPoolExecutor(max_workers=min(6, len(url_batches))) as tp:
                 future_to_batch = {
-                    tp.submit(self._get_torrent, browser, batch): (idx, batch)
+                    tp.submit(self._get_torrent, batch): (idx, batch)
                     for idx, batch in enumerate(url_batches)
                 }
                 for future in as_completed(future_to_batch):
@@ -93,36 +95,39 @@ class CiLiXiongSpider(_ExtendSpiderBase):
         return results
 
     @retry(Exception, 2, 3, 2, logger=logger)
-    def _get_torrent(self, browser: ChromiumPage, down_urls: list) -> Optional[list]:
+    def _get_torrent(self, down_urls: list) -> Optional[list]:
         # self._wait(0.5,1.5)
-        new_tab = browser.new_tab()
+        new_tab = self.browser.new_tab()
         new_tab.set.load_mode.eager()  # 设置加载模式为none
         results = []
-        for down_url in down_urls:
-            try:
-                new_tab.get(down_url, timeout=20)
-                link_tags = new_tab("css:div .mv_down").eles("tag:a")
-                if not link_tags:
-                    return []
-                url_set = set()
+        try:
+            for down_url in down_urls:
+                try:
+                    new_tab.get(down_url, timeout=20)
+                    link_tags = new_tab("css:div .mv_down").eles("tag:a")
+                    if not link_tags:
+                        return []
+                    url_set = set()
 
-                for a_tag in link_tags:
-                    link = a_tag.link
-                    if link and link.startswith("magnet") and link not in url_set:
-                        title_info = SearchFilterHelper().parse_title(a_tag.text)
-                        if not title_info.episode:
-                            title_info.episode = SearchFilterHelper().get_episode(a_tag.text)
-                        results.append({
-                            "title": a_tag.text,
-                            "enclosure": link,
-                            "description": a_tag.text,
-                            "size": title_info.size_num
-                        })
-                        url_set.add(link)
-            except Exception as e:
-                logger.error(
-                    f"{self.spider_name}-详情页:【{down_url}】,获取种子失败: {str(e)} - {traceback.format_exc()}")
-                return []
+                    for a_tag in link_tags:
+                        link = a_tag.link
+                        if link and link.startswith("magnet") and link not in url_set:
+                            title_info = SearchFilterHelper().parse_title(a_tag.text)
+                            if not title_info.episode:
+                                title_info.episode = SearchFilterHelper().get_episode(a_tag.text)
+                            results.append({
+                                "title": a_tag.text,
+                                "enclosure": link,
+                                "description": a_tag.text,
+                                "size": title_info.size_num
+                            })
+                            url_set.add(link)
+                except Exception as e:
+                    logger.error(
+                        f"{self.spider_name}-详情页:【{down_url}】,获取种子失败: {str(e)} - {traceback.format_exc()}")
+                    return []
+        finally:
+            new_tab.close()
         return results
 
 
@@ -136,7 +141,9 @@ if __name__ == "__main__":
         'proxy_config': {
             'flaresolverr_url': 'http://192.168.68.116:8191'
         },
-        'request_interval': (1.5, 1.9)  # 设置随机请求间隔，最小2秒，最大5秒
+        'request_interval': (1.5, 1.9),
+        'use_drission_browser': True,
+        'spider_headless': False
     })
     # 使用直接请求
     rest = lou.search("藏海传", 1)

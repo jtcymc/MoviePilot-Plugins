@@ -1,5 +1,4 @@
 import random
-import traceback
 
 from DrissionPage._pages.chromium_page import ChromiumPage
 from DrissionPage._pages.chromium_tab import ChromiumTab
@@ -31,7 +30,7 @@ def pass_slider_verification(tab: ChromiumPage | MixTab | ChromiumTab):
     :param tab: 浏览器标签页对象，用于操作网页
     :return: 如果未触发验证或验证通过，则返回True，否则返回False
     """
-    tab1 = tab.latest_tab
+    tab1 = tab.latest_tab if hasattr(tab, 'latest_tab') else tab
     # 检查当前页面是否为验证页面
     if not tab1 or not is_slider_verification_page(tab1.html):
         return True
@@ -72,7 +71,7 @@ def is_cloud_flare_verification_page(html: str) -> bool:
     return False
 
 
-def pass_turnstile_verification(driver: ChromiumPage, headless: bool = True):
+def pass_turnstile_verification(driver: ChromiumPage | MixTab | ChromiumPage, headless: bool = True):
     if not driver or not is_cloud_flare_verification_page(driver.html):
         return True
     display = None
@@ -96,7 +95,7 @@ def pass_turnstile_verification(driver: ChromiumPage, headless: bool = True):
         time.sleep(1)
         return True
     except Exception as e:
-        logger.error(f"An error occurred: {str(e)},{traceback.format_exc()}")
+        logger.error("An error occurred: %s", str(e))
     finally:
         if display:
             display.stop()
@@ -192,7 +191,7 @@ from DrissionPage import ChromiumPage
 
 
 class CloudflareBypasser:
-    def __init__(self, driver: ChromiumPage, max_retries=2, log=True):
+    def __init__(self, driver: ChromiumPage | MixTab | ChromiumPage, max_retries=2, log=True):
         self.driver = driver
         self.max_retries = max_retries
         self.log = log

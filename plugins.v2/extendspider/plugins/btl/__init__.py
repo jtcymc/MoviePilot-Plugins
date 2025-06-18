@@ -3,16 +3,12 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
-from DrissionPage._pages.chromium_page import ChromiumPage
-
 from app.log import logger
 from app.plugins.extendspider.plugins.base import _ExtendSpiderBase
 from app.schemas import SearchContext
 from app.utils.common import retry
-from app.plugins.extendspider.utils.browser import create_drission_chromium
 from app.utils.string import StringUtils
 from app.plugins.extendspider.utils.pass_verify import pass_slider_verification
-from schemas import MediaInfo
 
 
 class BtlSpider(_ExtendSpiderBase):
@@ -35,11 +31,13 @@ class BtlSpider(_ExtendSpiderBase):
         if not keyword:
             logger.warning(f"{self.spider_name}-搜索关键词为空")
             return results
-        #  创建浏览器
-        browser = create_drission_chromium(proxy=self.spider_proxy, headless=True)
+        if not self.browser:
+            logger.warn(f"{self.spider_name}-未初始化浏览器")
+            return  []
+        tab = self.browser.new_tab(url=self.spider_url)
         try:
-            browser.get(self.spider_url)
-            if not pass_slider_verification(browser):
+            # self.browser.get(self.spider_url)
+            if not pass_slider_verification(tab):
                 logger.warn("cloudflare challenge fail！")
                 return results
             # 访问搜索页
@@ -47,11 +45,11 @@ class BtlSpider(_ExtendSpiderBase):
             self._wait_inner(min_delay=1, max_delay=2)
             search_url = self.get_search_url(keyword, page)
             listen_url = "api/v1/getVideoList"
-            browser.listen.start(listen_url)
+            tab.listen.start(listen_url)
             # 滚动到页面底部以触发更多数据加载
-            browser.scroll.to_bottom()
-            browser.get(search_url)
-            packet = browser.listen.wait(timeout=60)
+            tab.scroll.to_bottom()
+            tab.get(search_url)
+            packet = tab.listen.wait(timeout=60)
             if not packet:
                 logger.warn(f"{self.spider_name}-没有搜索到数据，url:【{search_url}】")
                 return results
@@ -62,14 +60,14 @@ class BtlSpider(_ExtendSpiderBase):
                 return results
             json_data = resp.body.get("data")
             if json_data and (json_data.get("total", 0) > 0 or len(json_data.get("data", [])) > 0):
-                results = self._parse_search_result(browser, json_data.get("data", []), ctx)
+                results = self._parse_search_result(json_data.get("data", []), ctx)
                 logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
             return results
         except Exception as e:
             logger.error(f"{self.spider_name}-搜索失败: {str(e)} - {traceback.format_exc()}")
             return results
         finally:
-            browser.quit()
+            tab.close()
 
     @staticmethod
     def match_ids(data: dict, ids2: list) -> bool:
@@ -95,7 +93,7 @@ class BtlSpider(_ExtendSpiderBase):
         # 若有交集则返回 True，否则返回 False
         return bool(common_ids)
 
-    def _parse_search_result(self, browser: ChromiumPage, datas: list[dict], ctx: SearchContext):
+    def _parse_search_result(self, datas: list[dict], ctx: SearchContext):
         if not datas:
             return []
         detail_urls = set()
@@ -126,7 +124,7 @@ class BtlSpider(_ExtendSpiderBase):
             # 使用线程池并发处理批次
             with ThreadPoolExecutor(max_workers=min(4, len(url_batches))) as tp:
                 future_to_batch = {
-                    tp.submit(self._get_torrent, browser, batch): (idx, batch)
+                    tp.submit(self._get_torrent, batch): (idx, batch)
                     for idx, batch in enumerate(url_batches)
                 }
                 for future in as_completed(future_to_batch):
@@ -143,53 +141,56 @@ class BtlSpider(_ExtendSpiderBase):
         return results
 
     @retry(Exception, 2, 3, 2, logger=logger)
-    def _get_torrent(self, browser: ChromiumPage, down_urls: list) -> Optional[list]:
+    def _get_torrent(self, down_urls: list) -> Optional[list]:
         results = []
-        new_tab = browser.new_tab()
-        for down_url in down_urls:
-            try:
-                listen_url = "api/v1/getVideoDetail"
-                new_tab.listen.start(listen_url)
-                new_tab.get(down_url, timeout=20)
-                new_tab.scroll.to_bottom()
-                packet = new_tab.listen.wait(1, timeout=60)
-                new_tab.listen.stop()
-                if not packet:
-                    logger.warn(f"详情页:【{down_url}】,没有捕获到数据，url:【{listen_url}】")
-                    return []
-                    # 监听的url
-                resp = packet.response
-                if resp.status != 200 or not resp.body:
-                    logger.warn(f"详情页:【{down_url}】,数据获取失败，status:【{resp.status}】，url:【{listen_url}】")
-                    return []
-                json_data = resp.body.get("data")
-                if not json_data or json_data.get("znum", 0) <= 0:
-                    return results
-                url_set = set()
-                for _, values in json_data.get("ecca", {}).items():
-                    for value in values:
-                        enclosure = value.get("down", "")
-                        if not enclosure:
-                            continue
-                        elif not enclosure.startswith("http"):
-                            enclosure = f"{self.spider_url.strip("/")}{enclosure}"
-                        if enclosure in url_set:
-                            continue
-                        zlink = value.get("zlink")
-                        if zlink and not zlink.startswith("magnet"):
-                            logger.debug(f"详情页:【{down_url}】,种子链接不是磁力链接:【{zlink}】")
-                            continue
-                        url_set.add(enclosure)
-                        results.append({
-                            "title": value.get("zname"),
-                            "enclosure": enclosure,
-                            "description": value.get("zname"),
-                            'pubdate': StringUtils.str_to_timestamp(value.get('ezt')),
-                            "size": StringUtils.num_filesize(value.get("zsize", ""))
-                        })
-            except Exception as e:
-                logger.error(
-                    f"{self.spider_name}-详情页:【{down_url}】,获取种子失败: {str(e)} - {traceback.format_exc()}")
+        new_tab = self.browser.new_tab()
+        try:
+            for down_url in down_urls:
+                try:
+                    listen_url = "api/v1/getVideoDetail"
+                    new_tab.listen.start(listen_url)
+                    new_tab.get(down_url, timeout=20)
+                    new_tab.scroll.to_bottom()
+                    packet = new_tab.listen.wait(1, timeout=60)
+                    new_tab.listen.stop()
+                    if not packet:
+                        logger.warn(f"详情页:【{down_url}】,没有捕获到数据，url:【{listen_url}】")
+                        return []
+                        # 监听的url
+                    resp = packet.response
+                    if resp.status != 200 or not resp.body:
+                        logger.warn(f"详情页:【{down_url}】,数据获取失败，status:【{resp.status}】，url:【{listen_url}】")
+                        return []
+                    json_data = resp.body.get("data")
+                    if not json_data or json_data.get("znum", 0) <= 0:
+                        return results
+                    url_set = set()
+                    for _, values in json_data.get("ecca", {}).items():
+                        for value in values:
+                            enclosure = value.get("down", "")
+                            if not enclosure:
+                                continue
+                            elif not enclosure.startswith("http"):
+                                enclosure = f"{self.spider_url.strip("/")}{enclosure}"
+                            if enclosure in url_set:
+                                continue
+                            zlink = value.get("zlink")
+                            if zlink and not zlink.startswith("magnet"):
+                                logger.debug(f"详情页:【{down_url}】,种子链接不是磁力链接:【{zlink}】")
+                                continue
+                            url_set.add(enclosure)
+                            results.append({
+                                "title": value.get("zname"),
+                                "enclosure": enclosure,
+                                "description": value.get("zname"),
+                                'pubdate': StringUtils.str_to_timestamp(value.get('ezt')),
+                                "size": StringUtils.num_filesize(value.get("zsize", ""))
+                            })
+                except Exception as e:
+                    logger.error(
+                        f"{self.spider_name}-详情页:【{down_url}】,获取种子失败: {str(e)} - {traceback.format_exc()}")
+        finally:
+            new_tab.close()
         return results
 
 
@@ -202,16 +203,18 @@ if __name__ == "__main__":
         'proxy_config': {
             'flaresolverr_url': 'http://192.168.68.116:8191'
         },
-        'request_interval': (1.5, 1.9)  # 设置随机请求间隔，最小2秒，最大5秒
+        'request_interval': (1.5, 1.9),  # 设置随机请求间隔，最小2秒，最大5秒
+        'spider_headless': False,
+        'use_drission_browser': True,
     })
-    ctx = SearchContext(
-        keyword="遮天",
-        media_info=MediaInfo(
-            imdb_id="tt27617390",
-            title="遮天",
-            year="2015"
-        )
-    )
+    # ctx = SearchContext(
+    #     keyword="遮天",
+    #     media_info=MediaInfo(
+    #         imdb_id="tt27617390",
+    #         title="遮天",
+    #         year="2015"
+    #     )
+    # )
     # 使用直接请求
-    rest = lou.search("遮天", 1, search_context=ctx)
+    rest = lou.search("灵笼 第二季", 1)
     print(rest)

@@ -19,6 +19,9 @@ import asyncio
 import sys
 import os
 
+from plugins.extendspider.utils.browser import create_drission_chromium
+from plugins.extendspider.utils.drission_page import DrissonBrowser
+
 
 class _ExtendSpiderBase(metaclass=ABCMeta):
     """
@@ -66,10 +69,13 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     #  搜索结果锁
     _request_result_lock = None
     #  批量搜索结果
-    spider_batch_size = 6
+    spider_batch_size = 4
 
     # UA
     spider_ua = ""
+
+    # 浏览器
+    browser = None
 
     def __init__(self, config: dict = None):
         self._plugin_name = config.get("plugin_name", "ExtendSpider")
@@ -78,6 +84,8 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         self.spider_enable = config.get("spider_enable")
         self.spider_proxy = config.get("spider_proxy")
         self.spider_url = config.get("spider_url")
+        self.spider_headless = config.get("spider_headless", True)
+        self.use_drission_browser = config.get("use_drission_browser", False)
         # 跳过cloudflare
         self.pass_cloud_flare = config.get("pass_cloud_flare", False)
         self.spider_ua = config.get("spider_ua", settings.USER_AGENT)
@@ -125,6 +133,14 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         # 初始化线程锁
         self._request_result_lock = threading.Lock()
         logger.info(f"初始化 {self.spider_name} 爬虫")
+        #  创建浏览器
+        if self.use_drission_browser:
+            logger.info(f"{self.spider_name} 使用浏览器browser")
+            self.browser = DrissonBrowser(proxy=self.spider_proxy, headless=self.spider_headless).browser
+
+    def __del__(self):
+        if self.spider_proxy_client:
+            self.spider_proxy_client = None
 
     @abstractmethod
     def init_spider(self, config: dict = None):
@@ -370,3 +386,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         self.spider_cookie = cookies
         self.spider_ua = response.user_agent if hasattr(response, "user_agent") else self.spider_ua
         self.spider_headers["User-Agent"] = self.spider_ua
+
+        if self.browser:
+            self.browser.set.cookies(cookies)
+            self.browser.set.user_agent(self.spider_ua)

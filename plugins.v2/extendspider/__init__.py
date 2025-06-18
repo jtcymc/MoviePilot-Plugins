@@ -20,6 +20,8 @@ spider_configs = \
                          'proxy_type': 'playwright',
                          'spider_url': 'https://www.1lou.me',
                          'spider_desc': 'BT之家1LOU站-回归初心，追求极简',
+                         'use_drission_browser': True,
+                         'spider_headless': True,
                          "spider_tags": [
                              "电影", "电视剧", "动漫"
                          ]
@@ -52,6 +54,8 @@ spider_configs = \
                       'proxy_type': 'playwright',
                       'spider_url': 'https://www.6bt0.com',
                       'spider_desc': '不太灵-影视管理系统',
+                      'use_drission_browser': True,
+                      'spider_headless': True,
                       },
         "BtttSpider": {'spider_name': 'BtttSpider',
                        'spider_enable': True,
@@ -70,7 +74,9 @@ spider_configs = \
                             'spider_desc': '磁力熊，支持完结影视',
                             "spider_tags": [
                                 "电影", "电视剧", "动漫", "完结"
-                            ]
+                            ],
+                            'use_drission_browser': True,
+                            'spider_headless': True,
                             },
         "Dytt8899Spider": {'spider_name': 'Dytt8899Spider',
                            'spider_enable': True,
@@ -89,6 +95,8 @@ spider_configs = \
                          'spider_desc': '观影 GYING',
                          'spider_username': '',
                          'spider_password': '',
+                         'use_drission_browser': True,
+                         'spider_headless': True,
                          },
     }
 
@@ -101,7 +109,7 @@ class ExtendSpider(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jtcymc/MoviePilot-Plugins/8ed891e0441a79628da01b9618fcd85ba7a88147/icons/Extend_Spider.png"
     # 插件版本
-    plugin_version = "1.5.18"
+    plugin_version = "1.5.19"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
