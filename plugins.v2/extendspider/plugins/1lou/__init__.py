@@ -206,6 +206,7 @@ class Bt1louSpider(_ExtendSpiderBase):
 
     def _parse_detail_results(self, detail_urls: list[dict]) -> list:
         """ 处理详情页 """
+        import os
         results = []
         _processed_torrent_titles = set()
 
@@ -300,7 +301,7 @@ class Bt1louSpider(_ExtendSpiderBase):
         return results
 
     def _upload_and_format_torrent_info(self, tmp_folder: str):
-
+        import os
         files = os.listdir(tmp_folder)  # 得到文件夹下的所有文件名称
         results = []
         for file in files:
