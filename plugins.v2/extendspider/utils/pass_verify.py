@@ -57,7 +57,7 @@ def is_cloud_flare_verification_page(html: str) -> bool:
 
     # 特征 1：标题
     title = soup.title.string.strip().lower() if soup.title and soup.title.string else ""
-    if "just a moment..." in title or "checking your browser" in title:
+    if "just a moment..." in title or "just a moment" in title  or "checking your browser" in title or "请稍候" in title or "请稍候…" in title:
         return True
 
     # 特征 2：iframe 指向 challenges.cloudflare.com
@@ -65,7 +65,7 @@ def is_cloud_flare_verification_page(html: str) -> bool:
         return True
 
     # 特征 4：页面内包含 Turnstile 验证容器
-    if soup.find(attrs={"data-testid": "challenge-widget-container"}) or 'cf-turnstile-response' in html:
+    if soup.find(attrs={"data-testid": "challenge-widget-container"}):
         return True
 
     return False

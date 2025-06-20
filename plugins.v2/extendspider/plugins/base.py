@@ -19,8 +19,9 @@ import asyncio
 import sys
 import os
 
-from plugins.extendspider.utils.browser import create_drission_chromium
 from plugins.extendspider.utils.drission_page import DrissonBrowser
+from plugins.extendspider.utils.file import clear_temp_folder
+from plugins.extendspider.utils.file_server import FileCodeBox
 
 
 class _ExtendSpiderBase(metaclass=ABCMeta):
@@ -86,6 +87,10 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         self.spider_url = config.get("spider_url")
         self.spider_headless = config.get("spider_headless", True)
         self.use_drission_browser = config.get("use_drission_browser", False)
+        # 有些网站下载有限制，因此先下载下来
+        self.use_file_server = config.get("use_file_server", False)
+        self.file_server_url = config.get("file_server_url")
+        self.tmp_folder = config.get("tmp_folder", os.path.join(os.path.dirname(__file__), "tmp_tt"))
         # 跳过cloudflare
         self.pass_cloud_flare = config.get("pass_cloud_flare", False)
         self.spider_ua = config.get("spider_ua", settings.USER_AGENT)
@@ -133,14 +138,23 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         # 初始化线程锁
         self._request_result_lock = threading.Lock()
         logger.info(f"初始化 {self.spider_name} 爬虫")
+        self.drission_browser = None
+        self.browser = None
         #  创建浏览器
         if self.use_drission_browser:
             logger.info(f"{self.spider_name} 使用浏览器browser")
-            self.browser = DrissonBrowser(proxy=self.spider_proxy, headless=self.spider_headless).browser
+            self.drission_browser = DrissonBrowser(proxy=self.spider_proxy, headless=self.spider_headless)
+            self.browser = self.drission_browser.browser
+        self.file_server = None
+        if self.use_file_server:
+            self.file_server = FileCodeBox(self.file_server_url)
+        clear_temp_folder(self.tmp_folder)
 
     def __del__(self):
         if self.spider_proxy_client:
             self.spider_proxy_client = None
+        if self.file_server:
+            self.file_server = None
 
     @abstractmethod
     def init_spider(self, config: dict = None):
@@ -364,7 +378,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
                     # 更新原始对象
                     result['size'] = size
 
-    def _from_pass_cloud_flare(self,  url):
+    def _from_pass_cloud_flare(self, url):
         # 发请求获取 cookies
         response = self.spider_proxy_client.request('GET', url)
         if not response.cookies:

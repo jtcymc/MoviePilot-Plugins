@@ -106,20 +106,20 @@ def create_drission_chromium(proxy: bool = False, headless: bool = True, ua=None
     co.set_user_agent(ua or settings.USER_AGENT)
     # Arguments to make the browser better for automation and less detectable.
     arguments = [
-        "--no-first-run",
-        "--force-color-profile=srgb",
-        "--metrics-recording-only",
-        "--password-store=basic",
-        "--use-mock-keychain",
-        "--export-tagged-pdf",
-        "--no-default-browser-check",
-        "--disable-background-mode",
-        "--enable-features=NetworkService,NetworkServiceInProcess,LoadCryptoTokenExtension,PermuteTLSExtensions",
-        "--disable-features=FlashDeprecationWarning,EnablePasswordsAccountStorage",
-        "--deny-permission-prompts",
+        # "--no-first-run",
+        # "--force-color-profile=srgb",
+        # "--metrics-recording-only",
+        # "--password-store=basic",
+        # "--use-mock-keychain",
+        # "--export-tagged-pdf",
+        # "--no-default-browser-check",
+        # "--disable-background-mode",
+        # "--enable-features=NetworkService,NetworkServiceInProcess,LoadCryptoTokenExtension,PermuteTLSExtensions",
+        # "--disable-features=FlashDeprecationWarning,EnablePasswordsAccountStorage",
+        # "--deny-permission-prompts",
         "--disable-gpu",  # 禁用gpu，提高加载速度
         "--no-sandbox",
-        "---accept-lang=en-US",
+        # "---accept-lang=en-US",
 
     ]
     # 阻止“自动保存密码”的提示气泡

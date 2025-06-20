@@ -1,16 +1,20 @@
+import asyncio
+import re
+import threading
+import time
 import traceback
-from typing import Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from bs4 import BeautifulSoup
-from app.log import logger
-from plugins.extendspider.plugins.base import _ExtendSpiderBase
-from plugins.extendspider.utils.url import xn_url_encode
-from app.schemas import SearchContext
-import threading
 
 from app.helper.search_filter import SearchFilterHelper
+from app.log import logger
+from app.schemas import SearchContext
 from app.utils.common import retry
+from plugins.extendspider.plugins.base import _ExtendSpiderBase
+from plugins.extendspider.utils.file import delete_folder, creat_folder
+from plugins.extendspider.utils.file_server import FileCodeBox
+from plugins.extendspider.utils.url import xn_url_encode
 
 
 class Bt1louSpider(_ExtendSpiderBase):
@@ -125,6 +129,7 @@ class Bt1louSpider(_ExtendSpiderBase):
         _processed_titles = set()
         _processed_urls = set()
         detail_urls = {}
+
         # 抓取第一页
         self._parse_search_page_detail_urls(html, _processed_titles,
                                             _processed_urls, detail_urls)
@@ -153,18 +158,24 @@ class Bt1louSpider(_ExtendSpiderBase):
         if not detail_urls:
             logger.info(f"{self.spider_name}-没有找到详情页，可能没有搜索到结果")
             return []
-        to_filter_titles = [title for title in detail_urls.keys()]
-        filter_titles = self.search_helper.do_filter(self.spider_name, keyword, to_filter_titles, ctx)
-        if not filter_titles:
-            logger.info(f"{self.spider_name}-没有找到符合要求的结果")
-            return []
-        detail_urls_tp = {detail_urls[title] for title in filter_titles}
+        detail_urls_tp = []
+        if ctx.enable_search_filter:
+            to_filter_titles = [title for title in detail_urls.keys()]
+            filter_titles = self.search_helper.do_filter(self.spider_name, keyword, to_filter_titles, ctx)
+            if not filter_titles:
+                logger.info(f"{self.spider_name}-没有找到符合要求的结果")
+                return []
+            detail_urls_tp = [{"title": title, "url": detail_urls[title]} for title in filter_titles if
+                              title in detail_urls]
+        else:
+            detail_urls_tp = [{"title": title, "url": detail_url} for title, detail_url in detail_urls.items()]
         results = self._parse_detail_results(detail_urls_tp)
         logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
         return results
 
     @retry(Exception, 2, 3, 2, logger=logger)
-    def _parse_search_page_detail_urls(self, html_content: str, _processed_titles, _processed_urls, detail_urls: dict):
+    def _parse_search_page_detail_urls(self, html_content: str, _processed_titles, _processed_urls, detail_urls: dict
+                                       ):
         """搜索结果解析，主要收集详情页信息"""
         if not html_content:
             return _processed_titles, detail_urls
@@ -193,121 +204,167 @@ class Bt1louSpider(_ExtendSpiderBase):
             detail_urls[title] = detail_url
         return _processed_titles, detail_urls
 
-    def _parse_detail_results(self, detail_urls: set) -> list:
+    def _parse_detail_results(self, detail_urls: list[dict]) -> list:
         """ 处理详情页 """
         results = []
         _processed_torrent_titles = set()
 
-        # 将URL列表分成多个批次
-        def chunk_list(lst, chunk_size):
-            return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+        tmp_folder = os.path.join(self.tmp_folder, str(int(time.time())))
 
-        def process_url_batch(url_batch, index):
-            current_batch_results = []
-            try:
-                for url_idx, detail_url in enumerate(url_batch):
-                    self._wait_inner(1.5, 2.9)
-                    logger.info(
-                        f"{self.spider_name}-线程 {index} 正在处理第 {url_idx + 1}/{len(url_batch)} 个详情页: {detail_url}")
-                    res = self.spider_proxy_client.request("GET", detail_url)
-                    html = res.content
-                    state, torrent_list = self._get_torrent_info(html, _processed_torrent_titles)
-                    if state:
-                        current_batch_results.extend(torrent_list)
-                        logger.info(
-                            f"{self.spider_name}-线程 {index} 成功获取第 {url_idx + 1}/{len(url_batch)} 个详情页的种子信息: {len(torrent_list)} 个")
-                return current_batch_results
-            except Exception as ex:
-                logger.error(f"{self.spider_name}-线程 {index} 处理批次失败: {str(ex)}")
-            return []
+        def sanitize_filename(name: str) -> str:
+            # 移除/替换 Windows 不允许的字符
+            return re.sub(r'[<>:"/\\|?*]', '_', name)
 
-        # 计算每个线程处理的URL数量
-        batch_size = max(1, len(detail_urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL
-        url_batches = chunk_list(list(detail_urls), batch_size)
+        try:
+            creat_folder(tmp_folder)
 
-        logger.info(f"{self.spider_name}-将 {len(detail_urls)} 个详情页分成 {len(url_batches)} 个批次处理")
+            # 将URL列表分成多个批次
+            def chunk_list(lst, chunk_size):
+                return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
 
-        # 使用线程池并发处理批次
-        with ThreadPoolExecutor(max_workers=min(self.spider_batch_size, len(url_batches))) as executor:
-            future_to_batch = {
-                executor.submit(process_url_batch, batch, idx + 1): (idx, batch)
-                for idx, batch in enumerate(url_batches)
-            }
-
-            for future in as_completed(future_to_batch):
-                idx, batch = future_to_batch[future]
+            def process_url_batch(url_batch, index):
+                # current_batch_results = []
+                new_tab = None
                 try:
-                    batch_results = future.result()
-                    with self._result_lock:
-                        results.extend(batch_results)
-                        logger.info(
-                            f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理完成，获取到 {len(batch_results)} 个种子")
-                except Exception as e:
-                    logger.error(f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败: {str(e)}")
+                    for url_idx, detail_item in enumerate(url_batch):
+                        self._wait_inner(0.6, 1.1)
+                        if new_tab is None:
+                            new_tab = self.browser.new_tab(detail_item['url'])
+                            # new_tab.set.load_mode.eager()  # 设置加载模式为none
+                            new_tab.set.when_download_file_exists('skip')
+                        else:
+                            new_tab.get(detail_item['url'], timeout=10)
 
-        logger.info(f"{self.spider_name}-所有批次处理完成，共获取到 {len(results)} 个种子")
+                        if not self.drission_browser.getTurnstileToken(new_tab):
+                            logger.warn(f"{self.spider_name}-线程 {index} 获取TurnstileToken失败")
+                            continue
+                        if not new_tab.wait.ele_displayed("css:fieldset a[href]", timeout=10):
+                            continue
+                        down = new_tab.ele("css:fieldset a[href]")
+                        # new_tab.stop_loading()
+                        if down:
+                            title = sanitize_filename(detail_item['title'])
+                            down.set.attr("target", "_self")
+                            self._wait(0.01, 0.1)
+                            new_tab.set.download_path(tmp_folder)
+                            mission = down.click.to_download(tmp_folder, timeout=20, new_tab=True,
+                                                             rename=title,
+                                                             suffix="torrent",
+                                                             by_js=True)  # 点击一个会触发下载的链接，同时设置下载路径和文件名
+                            if mission:
+                                mission.wait()
+                            logger.info(f"{self.spider_name}-线程 {index} url:[{detail_item['url']}]下载成功")
+                    return True
+                except Exception as ex:
+                    logger.error(f"{self.spider_name}-线程 {index} 处理批次失败: {str(ex)},{traceback.format_exc()}")
+                finally:
+                    if new_tab:
+                        try:
+                            new_tab.close()
+                        except Exception:
+                            pass
+                return False
+
+            # 计算每个线程处理的URL数量
+            batch_size = max(1, len(detail_urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL
+            url_batches = chunk_list(list(detail_urls), batch_size)
+
+            logger.info(f"{self.spider_name}-将 {len(detail_urls)} 个详情页分成 {len(url_batches)} 个批次处理")
+
+            # 使用线程池并发处理批次
+            with ThreadPoolExecutor(max_workers=min(self.spider_batch_size, len(url_batches))) as executor:
+                future_to_batch = {
+                    executor.submit(process_url_batch, batch, idx + 1): (idx, batch)
+                    for idx, batch in enumerate(url_batches)
+                }
+
+                for future in as_completed(future_to_batch):
+                    idx, batch = future_to_batch[future]
+                    try:
+                        flag = future.result()
+                        if flag:
+                            logger.info(
+                                f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理完成")
+                        else:
+                            logger.error(
+                                f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败")
+                    except Exception as e:
+                        logger.error(f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败: {str(e)}")
+            # 避免操作系统缓存
+            # self._wait_inner(0.3, 0.6)
+            results = self._upload_and_format_torrent_info(tmp_folder)
+            logger.info(f"{self.spider_name}-所有批次处理完成，共获取到 {len(results)} 个种子")
+        finally:
+            delete_folder(tmp_folder)
+            logger.info(f"{self.spider_name}-已删除临时文件夹 {tmp_folder}")
         return results
 
-    @retry(Exception, 2, 2, 2, logger=logger)
-    def _get_torrent_info(self, html_content: str, _processed_torrent_titles: set) -> Tuple[
-        bool, list]:
-        """同步版本的线程安全的获取种子信息"""
+    def _upload_and_format_torrent_info(self, tmp_folder: str):
+
+        files = os.listdir(tmp_folder)  # 得到文件夹下的所有文件名称
         results = []
-        soup = BeautifulSoup(html_content, "html.parser")
-        fieldset = soup.find("fieldset", class_="fieldset")
-        if not fieldset:
-            return True, []
-
-        for li in fieldset.find_all("li"):
-            if not li.find("i", class_="icon filetype torrent"):
-                continue
-            title = li.find("a").text.strip()
-            # 使用线程锁保护共享资源的访问
-            with self._torrent_lock:
-                if title in _processed_torrent_titles:
-                    logger.info(f"{self.spider_name}-跳过已处理种子：{title}")
+        for file in files:
+            if not os.path.isdir(file) and file.endswith(".torrent"):
+                flag, file_name, enclosure = asyncio.run(self.file_server.upload_file(os.path.join(tmp_folder, file)))
+                if not flag:
                     continue
-                _processed_torrent_titles.add(title)
-
-            href = li.find("a")['href']
-            # 判断是否是磁力链接
-            if href.startswith('magnet:?'):
-                enclosure = href
-                logger.debug(f"{self.spider_name}-找到磁力链接: {enclosure}")
-            else:
-                # 处理普通下载链接
-                if href.startswith('http'):
-                    enclosure = href
-                else:
-                    enclosure = f"{self.spider_url}/{href}"
-                logger.debug(f"{self.spider_name}-找到下载链接: {enclosure}")
-
-            title_info = SearchFilterHelper().parse_title(title)
-            if not title_info.episode:
-                title_info.episode = SearchFilterHelper().get_episode(title)
-            results.append({
-                "title": title,
-                "enclosure": enclosure,
-                "description": title,
-                # "page_url": detail_url, # 会下载字幕
-                "size": title_info.size_num
-            })
-            logger.info(f"{self.spider_name}-找到种子: {title}")
-        return True, results
+                title_info = SearchFilterHelper().parse_title(file)
+                results.append({
+                    "title": file,
+                    "enclosure": enclosure,
+                    "description": file,
+                    # "page_url": detail_url, # 会下载字幕
+                    "size": title_info.size_num
+                })
+                logger.info(f"{self.spider_name}-找到种子: {file}")
+                self._wait(2.5, 3.5)
+        return results
 
 
 if __name__ == "__main__":
-    lou = Bt1louSpider({
-        'spider_name': 'Bt1louSpider',
-        'proxy_type': 'playwright',
-        'pass_cloud_flare': True,
-        'spider_enable': True,
-        'proxy_config': {
-            'flaresolverr_url': 'http://192.168.68.115:8191'
-        },
-        'request_interval': (2, 5),
-        'use_drission_browser': False,
-        'spider_headless': False
-    })
-    # 使用直接请求
-    lou.search("大侠请上功", 1)
+    import os
+
+    # lou = Bt1louSpider({
+    #     'spider_name': 'Bt1louSpider',
+    #     'proxy_type': 'playwright',
+    #     'pass_cloud_flare': True,
+    #     'spider_enable': True,
+    #     'proxy_config': {
+    #         'flaresolverr_url': 'http://192.168.68.115:8191'
+    #     },
+    #     'request_interval': (2, 5),
+    #     'use_drission_browser': True,
+    #     'spider_headless': False,
+    #     "use_file_server": True,
+    #     "file_server_url": "http://192.168.68.190:12345",
+    #     "tmp_folder": os.path.join(os.path.dirname(__file__), "tmp_tt"),
+    # })
+    # # 使用直接请求
+    # lou.search("大侠请上功", 1)
+    file_server = FileCodeBox("http://192.168.68.190:12345")
+
+
+    def _upload_and_format_torrent_info(tmp_folder: str):
+
+        files = os.listdir(tmp_folder)  # 得到文件夹下的所有文件名称
+        results = []
+        for file in files:
+            if not os.path.isdir(file) and file.endswith(".torrent"):
+                time.sleep(3)
+                flag, file_name, enclosure = asyncio.run(file_server.upload_file(os.path.join(tmp_folder, file)))
+                if not flag:
+                    continue
+                title_info = SearchFilterHelper().parse_title(file)
+                results.append({
+                    "title": file,
+                    "enclosure": enclosure,
+                    "description": file,
+                    # "page_url": detail_url, # 会下载字幕
+                    "size": title_info.size_num
+                })
+                logger.info(f"找到种子: {file}")
+        return results
+
+
+    _upload_and_format_torrent_info(
+        "F:\\ShawProject\\MoviePilot\\app\\plugins\\extendspider\\plugins\\1lou\\tmp_tt\\1750402053")

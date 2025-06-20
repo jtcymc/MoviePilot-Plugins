@@ -1,4 +1,5 @@
 # _*_ coding: utf-8 _*_
+import os
 from copy import copy
 from typing import List, Dict, Any, Tuple, Optional
 
@@ -13,18 +14,21 @@ from .utils.spider_helper import SpiderHelper
 
 spider_configs = \
     {
-        "Bt1louSpider": {'spider_name': 'Bt1louSpider',
+        "Bt1louSpider": {"spider_name": "Bt1louSpider",
                          'spider_enable': True,
                          'spider_proxy': False,
                          'pass_cloud_flare': True,
                          'proxy_type': 'playwright',
-                         'spider_url': 'https://www.1lou.me',
+                         'spider_url': 'https://www.1lou.info',
+                         # 'spider_url': 'https://www.1lou.me',
                          'spider_desc': 'BT之家1LOU站-回归初心，追求极简',
                          'use_drission_browser': True,
                          'spider_headless': True,
                          "spider_tags": [
                              "电影", "电视剧", "动漫"
-                         ]
+                         ],
+                         "use_file_server": True,
+                         "file_server_url": "",
                          },
         "BtBtlSpider": {'spider_name': 'BtBtlSpider',
                         'spider_enable': True,
@@ -109,7 +113,7 @@ class ExtendSpider(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jtcymc/MoviePilot-Plugins/8ed891e0441a79628da01b9618fcd85ba7a88147/icons/Extend_Spider.png"
     # 插件版本
-    plugin_version = "1.5.21"
+    plugin_version = "1.6"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
