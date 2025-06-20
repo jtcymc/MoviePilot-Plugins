@@ -283,7 +283,6 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         except Exception as e:
             return False, f"测试过程发生异常: {str(e)}"
 
-    # @cached(cache=TTLCache(maxsize=200, ttl=2 * 3600), key=lambda self, keyword, page: (id(self), keyword, page))
     def search(self, keyword: str, page: int, search_context: Optional[SearchContext] = None):
         """
         搜索资源，支持限速控制。
