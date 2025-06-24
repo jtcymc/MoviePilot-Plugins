@@ -8,6 +8,7 @@ from DrissionPage import ChromiumOptions
 import time
 import os
 
+from plugins.extendspider.utils.browser import find_chromium_path
 from plugins.extendspider.utils.pass_verify import is_cloud_flare_verification_page
 from app.utils.system import SystemUtils
 
@@ -23,10 +24,11 @@ class DrissonBrowser(metaclass=SingletonClass):
 
         co = ChromiumOptions()
         co.auto_port()
-        co.set_timeouts(base=1)
+        # co.set_timeouts(base=1)
         # change this to the path of the folder containing the extension
         EXTENSION_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "turnstilePatch"))
         co.add_extension(EXTENSION_PATH)
+        co.set_user_data_path('/tmp')
         if self._headless:
             from sys import platform
             platform_identifier = "X11; Linux x86_64"
@@ -38,9 +40,17 @@ class DrissonBrowser(metaclass=SingletonClass):
                 platform_identifier = "Windows NT 10.0; Win64; x64"
             co.headless(self._headless)
             co.set_user_agent(
-                f"Mozilla/5.0 ({platform_identifier}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+                f"Mozilla/5.0 ({platform_identifier}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.126 Safari/537.36")
         if SystemUtils.is_docker():
             co.set_argument("--no-sandbox")
+            co.set_argument('--disable-dev-shm-usage')
+            co.set_argument('--disable-software-rasterizer')
+            co.set_argument('--disable-gpu')
+            co.set_argument('--headless=new')
+        path = find_chromium_path()
+        logger.info(f"使用自定义的 Chromium 路径：{path}")
+        if path:
+            co.set_browser_path(path)
         return ChromiumPage(co)
 
     @property
