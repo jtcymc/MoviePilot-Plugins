@@ -230,15 +230,17 @@ class Bt1louSpider(_ExtendSpiderBase):
 
             # 启动单线程 TokenWorker
             worker = TokenWorker(spider=self, tmp_folder=tmp_folder, max_retries=2, token_timeout=12.0)
-            worker.start()
+            try:
+                worker.start()
 
-            # 逐条投喂任务（串行下载，但主线程在等待队列完成）
-            for it in queue_items:
-                worker.queue.put(it)
+                # 逐条投喂任务（串行下载，但主线程在等待队列完成）
+                for it in queue_items:
+                    worker.queue.put(it)
 
-            # 等待所有任务完成
-            worker.queue.join()
-            worker.stop()
+                # 等待所有任务完成
+                worker.queue.join()
+            finally:
+                worker.stop()
             worker.join(timeout=5)
 
             # 上传并格式化
