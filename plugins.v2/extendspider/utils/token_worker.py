@@ -6,6 +6,8 @@ import threading
 import time
 import traceback
 
+from app.log import logger
+
 
 class TokenWorker(threading.Thread):
     """单线程串行操控 DrissionPage，避免多线程争抢 WebSocket/CDP。"""
@@ -39,7 +41,7 @@ class TokenWorker(threading.Thread):
                 if ok:
                     return True
             except Exception as e:
-                self.spider.logger.warning(f"{self.spider.spider_name}-Token 获取异常[{attempt}/{self.max_retries}]: {e}")
+                logger.warning(f"{self.spider.spider_name}-Token 获取异常[{attempt}/{self.max_retries}]: {e}")
             # 退避 + 抖动
             self._with_jitter(0.8, 1.6)
         return False
@@ -71,17 +73,17 @@ class TokenWorker(threading.Thread):
 
                 # 获取 Turnstile token（带重试）
                 if not self._get_token_with_retry(tab):
-                    self.spider.logger.warning(f"{self.spider.spider_name}-获取TurnstileToken失败 url={url}")
+                    logger.warning(f"{self.spider.spider_name}-获取TurnstileToken失败 url={url}")
                     continue
 
                 # 等下载按钮元素出现
                 if not tab.wait.ele_displayed("css:fieldset a[href]", timeout=10):
-                    self.spider.logger.warning(f"{self.spider.spider_name}-下载链接未出现 url={url}")
+                    logger.warning(f"{self.spider.spider_name}-下载链接未出现 url={url}")
                     continue
 
                 down = tab.ele("css:fieldset a[href]")
                 if not down:
-                    self.spider.logger.warning(f"{self.spider.spider_name}-未找到下载元素 url={url}")
+                    logger.warning(f"{self.spider.spider_name}-未找到下载元素 url={url}")
                     continue
 
                 down.set.attr("target", "_self")
@@ -103,12 +105,12 @@ class TokenWorker(threading.Thread):
                     file_path = os.path.join(self.tmp_folder, f"{title}.torrent")
                     if os.path.exists(file_path):
                         self.downloaded_files.append(file_path)
-                        self.spider.logger.info(f"{self.spider.spider_name}-下载成功: {file_path}")
+                        logger.info(f"{self.spider.spider_name}-下载成功: {file_path}")
                 else:
-                    self.spider.logger.warning(f"{self.spider.spider_name}-下载任务未创建 url={url}")
+                    logger.warning(f"{self.spider.spider_name}-下载任务未创建 url={url}")
 
             except Exception as e:
-                self.spider.logger.error(
+                logger.error(
                     f"{self.spider.spider_name}-TokenWorker 处理失败: {e}\n{traceback.format_exc()}"
                 )
             finally:
