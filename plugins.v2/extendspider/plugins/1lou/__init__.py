@@ -1,9 +1,7 @@
 import asyncio
-import re
 import threading
 import time
 import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from bs4 import BeautifulSoup
 
@@ -14,6 +12,7 @@ from app.utils.common import retry
 from plugins.extendspider.plugins.base import _ExtendSpiderBase
 from plugins.extendspider.utils.file import delete_folder, creat_folder
 from plugins.extendspider.utils.file_server import FileCodeBox
+from plugins.extendspider.utils.token_worker import TokenWorker
 from plugins.extendspider.utils.url import xn_url_encode
 
 
@@ -205,99 +204,51 @@ class Bt1louSpider(_ExtendSpiderBase):
         return _processed_titles, detail_urls
 
     def _parse_detail_results(self, detail_urls: list[dict]) -> list:
-        """ 处理详情页 """
+        """处理详情页：改为单线程 TokenWorker 串行操控 DrissionPage，避免并发导致的断连/上下文丢失。"""
         import os
         results = []
-        _processed_torrent_titles = set()
 
-        tmp_folder = os.path.join(self.tmp_folder, str(int(time.time())))
+        # 过滤去重（以标题或 url 去重皆可）
+        _seen = set()
+        queue_items: list[dict] = []
+        for item in detail_urls:
+            key = (item.get("title"), item.get("url"))
+            if key in _seen:
+                continue
+            _seen.add(key)
+            queue_items.append({"title": item.get("title", "").strip(), "url": item.get("url", "").strip()})
 
-        def sanitize_filename(name: str) -> str:
-            # 移除/替换 Windows 不允许的字符
-            return re.sub(r'[<>:"/\\|?*]', '_', name)
+        if not queue_items:
+            logger.info(f"{self.spider_name}-没有可处理的详情页")
+            return results
 
+        # 临时目录
+        import time as _time
+        tmp_folder = os.path.join(self.tmp_folder, str(int(_time.time())))
         try:
             creat_folder(tmp_folder)
 
-            # 将URL列表分成多个批次
-            def chunk_list(lst, chunk_size):
-                return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+            # 启动单线程 TokenWorker
+            worker = TokenWorker(spider=self, tmp_folder=tmp_folder, max_retries=2, token_timeout=12.0)
+            worker.start()
 
-            def process_url_batch(url_batch, index):
-                # current_batch_results = []
-                new_tab = None
-                try:
-                    for url_idx, detail_item in enumerate(url_batch):
-                        self._wait_inner(0.6, 1.1)
-                        if new_tab is None:
-                            new_tab = self.browser.new_tab(detail_item['url'])
-                            # new_tab.set.load_mode.eager()  # 设置加载模式为none
-                            new_tab.set.when_download_file_exists('skip')
-                        else:
-                            new_tab.get(detail_item['url'], timeout=10)
+            # 逐条投喂任务（串行下载，但主线程在等待队列完成）
+            for it in queue_items:
+                worker.queue.put(it)
 
-                        if not self.drission_browser.getTurnstileToken(new_tab):
-                            logger.warn(f"{self.spider_name}-线程 {index} 获取TurnstileToken失败")
-                            continue
-                        if not new_tab.wait.ele_displayed("css:fieldset a[href]", timeout=10):
-                            continue
-                        down = new_tab.ele("css:fieldset a[href]")
-                        # new_tab.stop_loading()
-                        if down:
-                            title = sanitize_filename(detail_item['title'])
-                            down.set.attr("target", "_self")
-                            self._wait(0.01, 0.1)
-                            new_tab.set.download_path(tmp_folder)
-                            mission = down.click.to_download(tmp_folder, timeout=20, new_tab=True,
-                                                             rename=title,
-                                                             suffix="torrent",
-                                                             by_js=True)  # 点击一个会触发下载的链接，同时设置下载路径和文件名
-                            if mission:
-                                mission.wait()
-                            logger.info(f"{self.spider_name}-线程 {index} url:[{detail_item['url']}]下载成功")
-                    return True
-                except Exception as ex:
-                    logger.error(f"{self.spider_name}-线程 {index} 处理批次失败: {str(ex)},{traceback.format_exc()}")
-                finally:
-                    if new_tab:
-                        try:
-                            new_tab.close()
-                        except Exception:
-                            pass
-                return False
+            # 等待所有任务完成
+            worker.queue.join()
+            worker.stop()
+            worker.join(timeout=5)
 
-            # 计算每个线程处理的URL数量
-            batch_size = max(1, len(detail_urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL
-            url_batches = chunk_list(list(detail_urls), batch_size)
-
-            logger.info(f"{self.spider_name}-将 {len(detail_urls)} 个详情页分成 {len(url_batches)} 个批次处理")
-
-            # 使用线程池并发处理批次
-            with ThreadPoolExecutor(max_workers=min(self.spider_batch_size, len(url_batches))) as executor:
-                future_to_batch = {
-                    executor.submit(process_url_batch, batch, idx + 1): (idx, batch)
-                    for idx, batch in enumerate(url_batches)
-                }
-
-                for future in as_completed(future_to_batch):
-                    idx, batch = future_to_batch[future]
-                    try:
-                        flag = future.result()
-                        if flag:
-                            logger.info(
-                                f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理完成")
-                        else:
-                            logger.error(
-                                f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败")
-                    except Exception as e:
-                        logger.error(f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败: {str(e)}")
-            # 避免操作系统缓存
-            # self._wait_inner(0.3, 0.6)
+            # 上传并格式化
             results = self._upload_and_format_torrent_info(tmp_folder)
-            logger.info(f"{self.spider_name}-所有批次处理完成，共获取到 {len(results)} 个种子")
+            logger.info(f"{self.spider_name}-下载/上传完成，共获取到 {len(results)} 个种子")
+
         finally:
             delete_folder(tmp_folder)
             logger.info(f"{self.spider_name}-已删除临时文件夹 {tmp_folder}")
+
         return results
 
     def _upload_and_format_torrent_info(self, tmp_folder: str):
