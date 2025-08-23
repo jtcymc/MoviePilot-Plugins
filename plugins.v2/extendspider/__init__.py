@@ -1,5 +1,6 @@
 # _*_ coding: utf-8 _*_
 import os
+import traceback
 from copy import copy
 from typing import List, Dict, Any, Tuple, Optional
 
@@ -269,7 +270,11 @@ class ExtendSpider(_PluginBase):
             return None
         s_name = indexer.get("name", "").split('-')[1]
         logger.info(f"【{self.plugin_name}】开始检索Indexer：{s_name} ...")
-        ret = self._spider_helper.search(s_name, keyword, page, search_context=search_context)
+        try:
+            ret = self._spider_helper.search(s_name, keyword, page, search_context=search_context)
+        except Exception as e:
+            logger.error(f"【{self.plugin_name}】检索Indexer：{s_name} 错误：{str(e)}, {traceback.format_exc()}")
+            return []
         logger.info(f"【{self.plugin_name}】检索Indexer：{s_name} 返回资源数：{len(ret)}")
         return ret
 
