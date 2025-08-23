@@ -34,16 +34,21 @@ class TokenWorker(threading.Thread):
         time.sleep(random.uniform(a, b))
 
     def _get_token_with_retry(self, tab) -> bool:
-        """获取 TurnstileToken，带重试和退避。"""
+        """获取 TurnstileToken，带重试和超时保护。"""
+        import concurrent.futures
         for attempt in range(1, self.max_retries + 1):
             try:
-                ok = self.spider.drission_browser.getTurnstileToken(tab)
-                if ok:
-                    return True
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(self.spider.drission_browser.getTurnstileToken, tab)
+                    ok = future.result(timeout=self.token_timeout)  # 超时保护
+                    if ok:
+                        return True
+            except concurrent.futures.TimeoutError:
+                logger.warning(f"{self.spider.spider_name}-Token 获取超时[{attempt}/{self.max_retries}]")
             except Exception as e:
                 logger.warning(f"{self.spider.spider_name}-Token 获取异常[{attempt}/{self.max_retries}]: {e}")
-            # 退避 + 抖动
-            self._with_jitter(0.8, 1.6)
+
+            self._with_jitter(0.8, 1.6)  # 退避
         return False
 
     def run(self):
