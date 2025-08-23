@@ -84,8 +84,8 @@ class DrissonBrowser(metaclass=SingletonClass):
             except:
                 pass
             time.sleep(1)
-            if i % 5 == 0:
-                page.refresh()
+            # if i % 5 == 0:
+            #     page.refresh()
                 # page.wait.ele_displayed("@name=cf-turnstile-response", timeout=15)
         page.refresh()
         return None

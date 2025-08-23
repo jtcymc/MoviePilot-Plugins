@@ -229,7 +229,7 @@ class Bt1louSpider(_ExtendSpiderBase):
             creat_folder(tmp_folder)
 
             # 启动单线程 TokenWorker
-            worker = TokenWorker(spider=self, tmp_folder=tmp_folder, max_retries=2, token_timeout=12.0)
+            worker = TokenWorker(spider=self, tmp_folder=tmp_folder, max_retries=2, token_timeout=1.0)
             try:
                 worker.start()
 
