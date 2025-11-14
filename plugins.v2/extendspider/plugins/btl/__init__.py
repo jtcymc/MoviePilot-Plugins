@@ -42,7 +42,7 @@ class BtlSpider(_ExtendSpiderBase):
                 return results
             # 访问搜索页
             logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
-            self._wait_inner(min_delay=1, max_delay=2)
+            self._wait_inner()
             search_url = self.get_search_url(keyword, page)
             listen_url = "api/v1/getVideoList"
             tab.listen.start(listen_url)
@@ -113,6 +113,7 @@ class BtlSpider(_ExtendSpiderBase):
             if self.match_ids(data, ids):
                 detail_url = f"{self.spider_url}/mv/{data.get('idcode')}"
                 detail_urls.add(detail_url)
+                break
         results = []
         if detail_urls:
             logger.info(f"{self.spider_name}-解析到{len(detail_urls)}个搜索结果，开始获取链接地址...")
@@ -122,7 +123,7 @@ class BtlSpider(_ExtendSpiderBase):
 
             logger.info(f"{self.spider_name}-将 {len(detail_urls)} 个详情页分成 {len(url_batches)} 个批次处理")
             # 使用线程池并发处理批次
-            with ThreadPoolExecutor(max_workers=min(4, len(url_batches))) as tp:
+            with ThreadPoolExecutor(max_workers=min(1, len(url_batches))) as tp:
                 future_to_batch = {
                     tp.submit(self._get_torrent, batch): (idx, batch)
                     for idx, batch in enumerate(url_batches)
@@ -137,10 +138,11 @@ class BtlSpider(_ExtendSpiderBase):
                                 f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理完成，获取到 {len(batch_results)} 个种子")
                     except Exception as e:
                         logger.error(f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败: {str(e)}")
+                        return  []
         logger.info(f"{self.spider_name}-所有批次处理完成，共获取到 {len(results)} 个种子")
         return results
 
-    @retry(Exception, 2, 3, 2, logger=logger)
+    # @retry(Exception, 2, 3, 2, logger=logger)
     def _get_torrent(self, down_urls: list) -> Optional[list]:
         results = []
         new_tab = None

@@ -70,13 +70,17 @@ class CiLiXiongSpider(_ExtendSpiderBase):
         results = []
         if detail_urls:
             logger.info(f"{self.spider_name}-解析到{len(detail_urls)}个搜索结果，开始获取链接地址...")
+            urls = []
+            if 0 < self.spider_max_load_result < len(detail_urls):
+                urls = list(detail_urls)[:self.spider_max_load_result]
+                logger.info(f"{self.spider_name}-已过滤，仅获取前 {self.spider_max_load_result} 个种子")
             # 计算每个线程处理的URL数量
-            batch_size = max(1, len(detail_urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL
-            url_batches = self.chunk_list(list(detail_urls), batch_size)
+            batch_size = max(1, len(urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL
+            url_batches = self.chunk_list(urls, batch_size)
 
-            logger.info(f"{self.spider_name}-将 {len(detail_urls)} 个详情页分成 {len(url_batches)} 个批次处理")
+            logger.info(f"{self.spider_name}-将 {len(urls)} 个详情页分成 {len(url_batches)} 个批次处理")
             # 使用线程池并发处理批次
-            with ThreadPoolExecutor(max_workers=min(6, len(url_batches))) as tp:
+            with ThreadPoolExecutor(max_workers=min(2, len(url_batches))) as tp:
                 future_to_batch = {
                     tp.submit(self._get_torrent, batch): (idx, batch)
                     for idx, batch in enumerate(url_batches)
@@ -94,7 +98,7 @@ class CiLiXiongSpider(_ExtendSpiderBase):
         logger.info(f"{self.spider_name}-所有批次处理完成，共获取到 {len(results)} 个种子")
         return results
 
-    @retry(Exception, 2, 3, 2, logger=logger)
+    # @retry(Exception, 2, 3, 2, logger=logger)
     def _get_torrent(self, down_urls: list) -> Optional[list]:
         # self._wait(0.5,1.5)
         new_tab = self.browser.new_tab()

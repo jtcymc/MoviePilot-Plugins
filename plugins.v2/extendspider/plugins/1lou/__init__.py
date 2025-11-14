@@ -24,6 +24,7 @@ class Bt1louSpider(_ExtendSpiderBase):
         # 初始化线程锁
         self._torrent_lock = threading.Lock()
         self.spider_max_load_page = 2
+        self.spider_max_load_result = 10
 
     def init_spider(self, config: dict = None):
         self.spider_url = self.spider_url or "https://www.1lou.me"
@@ -144,7 +145,7 @@ class Bt1louSpider(_ExtendSpiderBase):
                 # 抓取后续页面
                 for current_page in range(2, pages_to_fetch + 1):
                     try:
-                        self._wait_inner(0.5, 1.9)
+                        self._wait_inner(1, 1.9)
                         search_url = self.get_search_url(keyword, current_page)
                         logger.info(f"{self.spider_name}-正在抓取第 {current_page} 页: {search_url}")
                         res = self.spider_proxy_client.request("GET", search_url)
@@ -157,6 +158,7 @@ class Bt1louSpider(_ExtendSpiderBase):
         if not detail_urls:
             logger.info(f"{self.spider_name}-没有找到详情页，可能没有搜索到结果")
             return []
+
         detail_urls_tp = []
         if ctx.enable_search_filter:
             to_filter_titles = [title for title in detail_urls.keys()]
@@ -164,15 +166,18 @@ class Bt1louSpider(_ExtendSpiderBase):
             if not filter_titles:
                 logger.info(f"{self.spider_name}-没有找到符合要求的结果")
                 return []
+            if 0 < self.spider_max_load_result < len(filter_titles):
+                filter_titles = dict(list(filter_titles.items())[:self.spider_max_load_result])
             detail_urls_tp = [{"title": title, "url": detail_urls[title]} for title in filter_titles if
                               title in detail_urls]
         else:
+            if 0 < self.spider_max_load_result < len(detail_urls):
+                detail_urls = dict(list(detail_urls.items())[:self.spider_max_load_result])
             detail_urls_tp = [{"title": title, "url": detail_url} for title, detail_url in detail_urls.items()]
         results = self._parse_detail_results(detail_urls_tp)
         logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
         return results
 
-    @retry(Exception, 2, 3, 2, logger=logger)
     def _parse_search_page_detail_urls(self, html_content: str, _processed_titles, _processed_urls, detail_urls: dict
                                        ):
         """搜索结果解析，主要收集详情页信息"""
@@ -232,7 +237,6 @@ class Bt1louSpider(_ExtendSpiderBase):
             worker = TokenWorker(spider=self, tmp_folder=tmp_folder, max_retries=2, token_timeout=1.0)
             try:
                 worker.start()
-
                 # 逐条投喂任务（串行下载，但主线程在等待队列完成）
                 for it in queue_items:
                     worker.queue.put(it)

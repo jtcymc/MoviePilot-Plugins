@@ -46,6 +46,8 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     spider_order = 0
     # 最多获取页数
     spider_max_load_page = 2
+    # 最多获取结果数
+    spider_max_load_result = 10
     # 是否开启限流
     spider_ratelimit = True
     # 爬虫插件名称
@@ -54,7 +56,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     # 代理实例
     spider_proxy_client = None  # 请求间隔时间范围（秒）
     #  请求间隔时间
-    spider_request_interval = (0.6, 1.8)  # 最小2秒，最大5秒
+    spider_request_interval = (2, 10)  # 最小2秒，最大5秒
     # 爬虫网站连通
     spider_web_status = True
     #  请求头
@@ -70,7 +72,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     #  搜索结果锁
     _request_result_lock = None
     #  批量搜索结果
-    spider_batch_size = 4
+    spider_batch_size = 2
 
     # UA
     spider_ua = ""

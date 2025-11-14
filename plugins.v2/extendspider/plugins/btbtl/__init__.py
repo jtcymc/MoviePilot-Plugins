@@ -19,10 +19,12 @@ class BtBtlSpider(_ExtendSpiderBase):
 
     def __init__(self, config: dict = None):
         super(BtBtlSpider, self).__init__(config)
+        self.spider_max_load_result = 10
 
     def init_spider(self, config: dict = None):
         self.spider_url = self.spider_url or "https://www.btbtl.com"
         self.spider_search_url = f"{self.spider_url}/search/$key$"
+
 
     def get_search_url(self, keyword: str, page: int) -> str:
         if not keyword:
@@ -104,6 +106,9 @@ class BtBtlSpider(_ExtendSpiderBase):
                         urls = [down_urls[name] for name in down_urls.keys()]
                     if not urls:
                         return []
+                    if 0 < self.spider_max_load_result < len(urls):
+                        urls = urls[:self.spider_max_load_result]
+                        logger.info(f"{self.spider_name}-已过滤，仅获取前 {self.spider_max_load_result} 个种子")
                     results = self._get_torrent(urls)
             logger.info(f"{self.spider_name}-搜索结果解析完成，共找到 {len(results)} 个种子")
             return results
@@ -111,7 +116,7 @@ class BtBtlSpider(_ExtendSpiderBase):
             logger.error(f"{self.spider_name}-解析搜索结果失败: {str(e)} - {traceback.format_exc()}")
             return []
 
-    @retry(Exception, 2, 3, 2, logger=logger)
+    # @retry(Exception, 2, 3, 2, logger=logger)
     def _get_down_urls(self, detail_url: str, detail_page: Page, down_urls: dict) -> Dict[str, str]:
         # 使用线程池并发获取种子信息
         logger.info(f"{self.spider_name}-开始获取详情页: {detail_url}")
@@ -184,7 +189,7 @@ class BtBtlSpider(_ExtendSpiderBase):
         logger.info(f"{self.spider_name}-将 {len(down_urls)} 个下载页分成 {len(url_batches)} 个批次处理")
 
         # 使用线程池并发处理批次
-        with ThreadPoolExecutor(max_workers=min(6, len(url_batches))) as executor:
+        with ThreadPoolExecutor(max_workers=min(2, len(url_batches))) as executor:
             future_to_batch = {
                 executor.submit(process_url_batch, batch, idx + 1): (idx, batch)
                 for idx, batch in enumerate(url_batches)
@@ -227,6 +232,7 @@ class BtBtlSpider(_ExtendSpiderBase):
         self._wait_inner()
         detail_page.goto(down_url)
         detail_page.wait_for_load_state("networkidle", timeout=30 * 1000)
+        self._wait_inner()
 
         content = detail_page.content()
         soup = BeautifulSoup(content, "html.parser")
