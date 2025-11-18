@@ -56,7 +56,7 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
     # 代理实例
     spider_proxy_client = None  # 请求间隔时间范围（秒）
     #  请求间隔时间
-    spider_request_interval = (2, 10)  # 最小2秒，最大5秒
+    spider_request_interval = (6, 15)  # 最小2秒，最大5秒
     # 爬虫网站连通
     spider_web_status = True
     #  请求头
@@ -93,6 +93,11 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         self.use_file_server = config.get("use_file_server", False)
         self.file_server_url = config.get("file_server_url")
         self.tmp_folder = config.get("tmp_folder", os.path.join(os.path.dirname(__file__), "tmp_tt"))
+        # 结果数限制
+        # 最多获取页数
+        self.spider_max_load_page = config.get("file_server_url", 2)
+        # 最多获取结果数
+        self.spider_max_load_result = config.get("file_server_url", 10)
         # 跳过cloudflare
         self.pass_cloud_flare = config.get("pass_cloud_flare", False)
         self.spider_ua = config.get("spider_ua", settings.USER_AGENT)

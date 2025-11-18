@@ -23,8 +23,6 @@ class Bt1louSpider(_ExtendSpiderBase):
         self._result_lock = threading.Lock()
         # 初始化线程锁
         self._torrent_lock = threading.Lock()
-        self.spider_max_load_page = 2
-        self.spider_max_load_result = 10
 
     def init_spider(self, config: dict = None):
         self.spider_url = self.spider_url or "https://www.1lou.me"
@@ -140,7 +138,7 @@ class Bt1louSpider(_ExtendSpiderBase):
             # 计算需要抓取的页数
             pages_to_fetch = min(total_pages or 1, self.spider_max_load_page)
             logger.info(f"{self.spider_name}-总页数: {total_pages or 1}, 将抓取前 {pages_to_fetch} 页")
-
+            self._wait_inner(5, 6)
             if pages_to_fetch >= 2:
                 # 抓取后续页面
                 for current_page in range(2, pages_to_fetch + 1):
@@ -154,6 +152,7 @@ class Bt1louSpider(_ExtendSpiderBase):
                                                             _processed_urls, detail_urls)
                     except Exception as e:
                         logger.error(f"{self.spider_name}-抓取第 {current_page} 页时发生错误: {str(e)}")
+                    self._wait_inner(8, 16)
             logger.info(f"{self.spider_name}-共抓取 {pages_to_fetch} 页数据，找到详情页 {len(detail_urls)} 个结果")
         if not detail_urls:
             logger.info(f"{self.spider_name}-没有找到详情页，可能没有搜索到结果")
@@ -162,7 +161,7 @@ class Bt1louSpider(_ExtendSpiderBase):
         detail_urls_tp = []
         if ctx.enable_search_filter:
             to_filter_titles = [title for title in detail_urls.keys()]
-            filter_titles = self.search_helper.do_filter(self.spider_name, keyword, to_filter_titles, ctx)
+            filter_titles = self.search_helper.do_filter(self.spider_name, keyword, to_filter_titles, ctx, True)
             if not filter_titles:
                 logger.info(f"{self.spider_name}-没有找到符合要求的结果")
                 return []

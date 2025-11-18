@@ -100,7 +100,7 @@ class BtBtlSpider(_ExtendSpiderBase):
                     if ctx.enable_search_filter:
                         to_filter_titles = [name for name in down_urls.keys()]
                         filter_titles = SearchFilterHelper().do_filter(StringUtils.get_url_domain(self.spider_url),
-                                                                       keyword, to_filter_titles, ctx)
+                                                                       keyword, to_filter_titles, ctx, True)
                         urls = [down_urls[name] for name in down_urls.keys() if name in filter_titles]
                     else:
                         urls = [down_urls[name] for name in down_urls.keys()]

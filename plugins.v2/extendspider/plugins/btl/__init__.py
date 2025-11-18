@@ -21,10 +21,10 @@ class BtlSpider(_ExtendSpiderBase):
         self.spider_url = self.spider_url or "https://www.6bt0.com"
         self.spider_search_url = f"{self.spider_url}/search?sb=$key$"
 
-    def get_search_url(self, keyword: str, page: int) -> str:
+    def get_search_url(self, keyword: str, url: str, page: int) -> str:
         if not keyword:
             return ""
-        return self.spider_search_url.replace("$key$", keyword)
+        return f"{url}/search?sb=$key$".replace("$key$", keyword)
 
     def _do_search(self, keyword: str, page: int, ctx: SearchContext):
         results = []
@@ -33,7 +33,7 @@ class BtlSpider(_ExtendSpiderBase):
             return results
         if not self.browser:
             logger.warn(f"{self.spider_name}-未初始化浏览器")
-            return  []
+            return []
         tab = self.browser.new_tab(url=self.spider_url)
         try:
             # self.browser.get(self.spider_url)
@@ -42,8 +42,9 @@ class BtlSpider(_ExtendSpiderBase):
                 return results
             # 访问搜索页
             logger.info(f"{self.spider_name}-访问主页成功,开始搜索【{keyword}】...")
-            self._wait_inner()
-            search_url = self.get_search_url(keyword, page)
+            self._wait_inner(6, 12)
+            self.spider_url = tab.url[:-1] if tab.url.endswith('/') else tab.url
+            search_url = self.get_search_url(keyword, self.spider_url, page)
             listen_url = "api/v1/getVideoList"
             tab.listen.start(listen_url)
             # 滚动到页面底部以触发更多数据加载
@@ -59,8 +60,20 @@ class BtlSpider(_ExtendSpiderBase):
                 logger.warn(f"{self.spider_name}-搜索数据获取失败，status:【{resp.status}】，url:【{search_url}】")
                 return results
             json_data = resp.body.get("data")
+            self._wait_inner(6, 12)
+            results_tp = {}
             if json_data and (json_data.get("total", 0) > 0 or len(json_data.get("data", [])) > 0):
-                results = self._parse_search_result(json_data.get("data", []), ctx)
+                results_tp = self._parse_search_result(json_data.get("data", []), ctx)
+            if results_tp and len(results_tp.keys()) > 0:
+                to_filter_titles = [title for title in results_tp.keys()]
+                filter_titles = self.search_helper.do_filter(self.spider_name, keyword, to_filter_titles, ctx, True)
+                if not filter_titles:
+                    logger.info(f"{self.spider_name}-没有找到符合要求的结果")
+                    return []
+                results = [results_tp[title] for title in filter_titles]
+                if 0 < self.spider_max_load_result < len(results):
+                    results = results[:self.spider_max_load_result]
+                    logger.info(f"{self.spider_name}-已截断至 {len(results)} 个结果")
                 logger.info(f"{self.spider_name}-搜索完成，共找到 {len(results)} 个结果")
             return results
         except Exception as e:
@@ -93,9 +106,9 @@ class BtlSpider(_ExtendSpiderBase):
         # 若有交集则返回 True，否则返回 False
         return bool(common_ids)
 
-    def _parse_search_result(self, datas: list[dict], ctx: SearchContext):
+    def _parse_search_result(self, datas: list[dict], ctx: SearchContext) -> dict:
         if not datas:
-            return []
+            return {}
         detail_urls = set()
         ids = []
         if ctx and ctx.media_info:
@@ -114,7 +127,7 @@ class BtlSpider(_ExtendSpiderBase):
                 detail_url = f"{self.spider_url}/mv/{data.get('idcode')}"
                 detail_urls.add(detail_url)
                 break
-        results = []
+        results = {}
         if detail_urls:
             logger.info(f"{self.spider_name}-解析到{len(detail_urls)}个搜索结果，开始获取链接地址...")
             # 计算每个线程处理的URL数量
@@ -123,7 +136,7 @@ class BtlSpider(_ExtendSpiderBase):
 
             logger.info(f"{self.spider_name}-将 {len(detail_urls)} 个详情页分成 {len(url_batches)} 个批次处理")
             # 使用线程池并发处理批次
-            with ThreadPoolExecutor(max_workers=min(1, len(url_batches))) as tp:
+            with ThreadPoolExecutor(max_workers=min(2, len(url_batches))) as tp:
                 future_to_batch = {
                     tp.submit(self._get_torrent, batch): (idx, batch)
                     for idx, batch in enumerate(url_batches)
@@ -133,20 +146,20 @@ class BtlSpider(_ExtendSpiderBase):
                     try:
                         batch_results = future.result()
                         with self._result_lock:
-                            results.extend(batch_results)
+                            results.update(batch_results)
                             logger.info(
                                 f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理完成，获取到 {len(batch_results)} 个种子")
                     except Exception as e:
                         logger.error(f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败: {str(e)}")
-                        return  []
+                        return {}
         logger.info(f"{self.spider_name}-所有批次处理完成，共获取到 {len(results)} 个种子")
         return results
 
     # @retry(Exception, 2, 3, 2, logger=logger)
-    def _get_torrent(self, down_urls: list) -> Optional[list]:
-        results = []
+    def _get_torrent(self, down_urls: list) -> dict:
         new_tab = None
         listen_url = "api/v1/getVideoDetail"
+        detail_urls = {}
         try:
             for down_url in down_urls:
                 try:
@@ -162,44 +175,49 @@ class BtlSpider(_ExtendSpiderBase):
                     new_tab.listen.stop()
                     if not packet:
                         logger.warn(f"详情页:【{down_url}】,没有捕获到数据，url:【{listen_url}】")
-                        return []
+                        return detail_urls
                         # 监听的url
                     resp = packet.response
                     if resp.status != 200 or not resp.body:
                         logger.warn(f"详情页:【{down_url}】,数据获取失败，status:【{resp.status}】，url:【{listen_url}】")
-                        return []
+                        return detail_urls
                     json_data = resp.body.get("data")
                     if not json_data or json_data.get("znum", 0) <= 0:
-                        return results
+                        return detail_urls
                     url_set = set()
                     for _, values in json_data.get("ecca", {}).items():
                         for value in values:
-                            enclosure = value.get("down", "")
-                            if not enclosure:
-                                continue
-                            elif not enclosure.startswith("http"):
-                                enclosure = f"{self.spider_url.strip("/")}{enclosure}"
-                            if enclosure in url_set:
-                                continue
+                            # enclosure = value.get("down", "")
+                            # if not enclosure:
+                            #     continue
+                            # elif not enclosure.startswith("http"):
+                            #     enclosure = f"{self.spider_url.strip("/")}{enclosure}"
+                            # if enclosure in url_set:
+                            #     continue
                             zlink = value.get("zlink")
                             if zlink and not zlink.startswith("magnet"):
                                 logger.debug(f"详情页:【{down_url}】,种子链接不是磁力链接:【{zlink}】")
                                 continue
-                            url_set.add(enclosure)
-                            results.append({
+                            if not value.get("zname") or value.get("zname", "") == "":
+                                logger.debug(f"详情页:【{down_url}】,种子名称为空】")
+                                continue
+                            url_set.add(zlink)
+                            t_obj = {
                                 "title": value.get("zname"),
-                                "enclosure": enclosure,
+                                "enclosure": zlink,
                                 "description": value.get("zname"),
                                 'pubdate': StringUtils.str_to_timestamp(value.get('ezt')),
                                 "size": StringUtils.num_filesize(value.get("zsize", ""))
-                            })
+                            }
+                            detail_urls[value.get("zname")] = t_obj
                 except Exception as e:
                     logger.error(
                         f"{self.spider_name}-详情页:【{down_url}】,获取种子失败: {str(e)} - {traceback.format_exc()}")
+
+            return detail_urls
         finally:
             if new_tab:
                 new_tab.close()
-        return results
 
 
 if __name__ == "__main__":

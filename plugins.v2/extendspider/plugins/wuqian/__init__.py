@@ -98,7 +98,7 @@ class WuQianSpider(_ExtendSpiderBase):
             if ctx.enable_search_filter:
                 to_filter_titles = [name for name in detail_urls.keys()]
                 filter_titles = SearchFilterHelper().do_filter(StringUtils.get_url_domain(self.spider_url),
-                                                               keyword, to_filter_titles, ctx)
+                                                               keyword, to_filter_titles, ctx, True)
                 urls = [detail_urls[name] for name in detail_urls.keys() if name in filter_titles]
             else:
                 urls = [detail_urls[name] for name in detail_urls.keys()]
