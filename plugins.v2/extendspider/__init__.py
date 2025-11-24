@@ -180,7 +180,7 @@ class ExtendSpider(_PluginBase):
             EventManager().send_event(EventType.SpiderPluginsRload, data={"plugin_id": self.plugin_name})
             logger.info(f"插件初始化完成，当前状态：{'启用' if self._enabled else '禁用'}")
         except Exception as e:
-            logger.error(f"插件初始化失败：{str(e)}")
+            logger.error(f"插件初始化失败：{str(e)}, {traceback.format_exc()}")
             self._spider_helper = None
 
     def reload_config(self, is_init=False):
@@ -209,7 +209,7 @@ class ExtendSpider(_PluginBase):
                     self._spider_helper.spider_config[spider_name]['web_status'] = success
             logger.info(f"{self.plugin_name}-爬虫状态更新完成")
         except Exception as e:
-            logger.error(f"更新爬虫状态失败：{str(e)}")
+            logger.error(f"更新爬虫状态失败：{str(e)}, {traceback.format_exc()}")
 
     def get_status(self):
         """
@@ -236,7 +236,7 @@ class ExtendSpider(_PluginBase):
                 self._spider_helper.remove_plugin()
                 self._spider_helper = None
         except Exception as e:
-            logger.error(f"【{self.plugin_name}】停止插件错误: {str(e)}")
+            logger.error(f"【{self.plugin_name}】停止插件错误: {str(e)}, {traceback.format_exc()}")
 
     def __update_config(self):
         """
