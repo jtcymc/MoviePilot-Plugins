@@ -39,7 +39,7 @@
     "icon": "Extend_Spider.png",
     "author": "shaw",
     "level": 1,
-    "release": false,
+    "release": true,
     "history": {
       "v1.0": "适配MoviePilot V2 版本",
       "v1.1": "* 优化逻辑，增加数据缓存;<br/> * 适配更多BT源",
