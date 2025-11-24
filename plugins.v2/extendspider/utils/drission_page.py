@@ -26,7 +26,7 @@ class DrissonBrowser(metaclass=SingletonClass):
         co.auto_port()
         # co.set_timeouts(base=1)
         # change this to the path of the folder containing the extension
-        EXTENSION_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "turnstilePatch"))
+        EXTENSION_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "turnstilepatch"))
         co.add_extension(EXTENSION_PATH)
         co.set_user_data_path('/tmp')
         if self._headless:

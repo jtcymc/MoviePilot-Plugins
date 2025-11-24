@@ -135,7 +135,7 @@ def test_mouse():
     co.set_timeouts(base=1)
 
     # change this to the path of the folder containing the extension
-    EXTENSION_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "turnstilePatch"))
+    EXTENSION_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "turnstilepatch"))
     co.add_extension(EXTENSION_PATH)
 
     # uncomment this if you want to use headless mode
