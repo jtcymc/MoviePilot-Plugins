@@ -7,9 +7,9 @@ from cf_clearance import sync_cf_retry, sync_stealth
 
 from app.core.config import settings
 from app.log import logger
-from plugins.extendspider.utils.browser import create_drission_chromium
-from plugins.extendspider.utils.pass_verify import pass_cloud_flare_verification, pass_turnstile_verification
-from plugins.extendspider.utils.proxy import FlareSolverrProxy
+from app.plugins.extendspider.utils.browser import create_drission_chromium
+from app.plugins.extendspider.utils.pass_verify import pass_cloud_flare_verification, pass_turnstile_verification
+from app.plugins.extendspider.utils.proxy import FlareSolverrProxy
 
 
 def __pass_cloudflare(url: str, page: Page) -> bool:

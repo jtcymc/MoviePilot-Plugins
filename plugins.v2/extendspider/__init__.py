@@ -8,10 +8,10 @@ from cachetools import TTLCache, cached
 
 from app.plugins import _PluginBase
 from app.log import logger
+from app.plugins.extendspider.utils.spider_helper import SpiderHelper
 from app.schemas import SearchContext
 from app.core.event import EventManager
 from app.schemas.types import EventType
-from .utils.spider_helper import SpiderHelper
 
 spider_configs = \
     {

@@ -8,7 +8,7 @@ from DrissionPage._pages.chromium_tab import ChromiumTab
 from DrissionPage.common import By
 from app.log import logger
 from helper.search_filter import SearchFilterHelper
-from plugins.extendspider.plugins.base import _ExtendSpiderBase
+from app.plugins.extendspider.plugins.base import _ExtendSpiderBase
 from app.schemas import SearchContext
 from app.utils.common import retry
 

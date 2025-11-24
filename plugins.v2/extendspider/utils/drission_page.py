@@ -8,8 +8,8 @@ from DrissionPage import ChromiumOptions
 import time
 import os
 
-from plugins.extendspider.utils.browser import find_chromium_path
-from plugins.extendspider.utils.pass_verify import is_cloud_flare_verification_page
+from app.plugins.extendspider.utils.browser import find_chromium_path
+from app.plugins.extendspider.utils.pass_verify import is_cloud_flare_verification_page
 from app.utils.system import SystemUtils
 
 

@@ -9,11 +9,11 @@ from app.helper.search_filter import SearchFilterHelper
 from app.log import logger
 from app.schemas import SearchContext
 from app.utils.common import retry
-from plugins.extendspider.plugins.base import _ExtendSpiderBase
-from plugins.extendspider.utils.file import delete_folder, creat_folder
-from plugins.extendspider.utils.file_server import FileCodeBox
-from plugins.extendspider.utils.token_worker import TokenWorker
-from plugins.extendspider.utils.url import xn_url_encode
+from app.plugins.extendspider.plugins.base import _ExtendSpiderBase
+from app.plugins.extendspider.utils.file import delete_folder, creat_folder
+from app.plugins.extendspider.utils.file_server import FileCodeBox
+from app.plugins.extendspider.utils.token_worker import TokenWorker
+from app.plugins.extendspider.utils.url import xn_url_encode
 
 
 class Bt1louSpider(_ExtendSpiderBase):
