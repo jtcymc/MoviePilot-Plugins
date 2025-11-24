@@ -8,7 +8,6 @@ from cachetools import TTLCache, cached
 
 from app.plugins import _PluginBase
 from app.log import logger
-from app.plugins.extendspider.utils.spider_helper import SpiderHelper
 from app.schemas import SearchContext
 from app.core.event import EventManager
 from app.schemas.types import EventType
@@ -173,6 +172,7 @@ class ExtendSpider(_PluginBase):
 
             # 初始化爬虫助手
             if not self._spider_helper:
+                from app.plugins.extendspider.utils.spider_helper import SpiderHelper
                 self._spider_helper = SpiderHelper(self._spider_config)
             else:
                 # 重新加载配置
