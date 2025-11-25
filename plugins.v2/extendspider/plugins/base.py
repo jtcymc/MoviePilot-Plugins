@@ -95,9 +95,9 @@ class _ExtendSpiderBase(metaclass=ABCMeta):
         self.tmp_folder = config.get("tmp_folder", os.path.join(os.path.dirname(__file__), "tmp_tt"))
         # 结果数限制
         # 最多获取页数
-        self.spider_max_load_page = config.get("file_server_url", 2)
+        self.spider_max_load_page = config.get("spider_max_load_page", 2)
         # 最多获取结果数
-        self.spider_max_load_result = config.get("file_server_url", 10)
+        self.spider_max_load_result = config.get("spider_max_load_result", 10)
         # 跳过cloudflare
         self.pass_cloud_flare = config.get("pass_cloud_flare", False)
         self.spider_ua = config.get("spider_ua", settings.USER_AGENT)

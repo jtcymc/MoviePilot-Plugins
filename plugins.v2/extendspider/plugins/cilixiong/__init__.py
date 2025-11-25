@@ -74,6 +74,8 @@ class CiLiXiongSpider(_ExtendSpiderBase):
             if 0 < self.spider_max_load_result < len(detail_urls):
                 urls = list(detail_urls)[:self.spider_max_load_result]
                 logger.info(f"{self.spider_name}-已过滤，仅获取前 {self.spider_max_load_result} 个种子")
+            else:
+                urls = list(detail_urls)
             # 计算每个线程处理的URL数量
             batch_size = max(1, len(urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL
             url_batches = self.chunk_list(urls, batch_size)
