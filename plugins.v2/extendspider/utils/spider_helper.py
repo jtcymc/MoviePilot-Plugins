@@ -81,7 +81,8 @@ class SpiderHelper(metaclass=SingletonClass):
 
                 logger.info(f"正在加载爬虫插件：{conf}...")
                 # 禁用的不安装
-                if conf and hasattr(conf, "spider_enable") and not conf.spider_enable:
+                if not conf.get("spider_enable", True):  # 默认启用（True），若显式设为 False 则跳过
+                    logger.info(f"插件 {plugin_id} 已禁用，跳过加载")
                     continue
                 # 存储Class
                 self._extend_plugins[plugin_id] = plugin
