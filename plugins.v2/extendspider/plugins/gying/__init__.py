@@ -152,52 +152,86 @@ class GyingKSpider(_ExtendSpiderBase):
                         new_tab.set.load_mode.none()  # 设置加载模式为none
                     else:
                         new_tab.get(down_url)
-                    if not new_tab.wait.ele_displayed("css:.down-list", timeout=40):
+                    if not new_tab.wait.ele_displayed("css:.down-link", timeout=40):
                         new_tab.stop_loading()
                         continue
                     new_tab.stop_loading()
-                    p_tags = new_tab("css:div .down-list").s_eles("tag:p")
-                    if not p_tags:
+                    tr_tags = new_tab.eles("css:.bit_list tbody tr")
+                    if not tr_tags:
                         return []
                     url_set = set()
                     to_down_urls = set()
-                    for p_tag in p_tags:
-                        a_tag = p_tag.s_ele("tag:a")
-                        if not a_tag:
+                    for tr_tag in tr_tags:
+                        if not tr_tag:
                             continue
-                        size_str = p_tag.s_ele("css:.size").text
-                        link = a_tag.link
-                        if link.startswith("magnet") and link not in url_set:
-                            # 是磁力直接
-                            title_info = SearchFilterHelper().parse_title(a_tag.text)
+                        # 获取大小信息 - 从第三个td中获取
+                        size_td = tr_tag.s_ele("xpath:./td[3]")
+                        size_str = size_td.text.strip() if size_td else ""
+
+                        # 获取做种信息 - 从第四个td中的i标签获取
+                        seeders_td = tr_tag.s_ele("xpath:./td[4]//i")
+                        seeders_text = seeders_td.attr("title") if seeders_td else ""
+                        seeders_num = 0
+                        # 解析做种数量
+                        if seeders_text and "做种" in seeders_text:
+                            try:
+                                seeders_num = int(seeders_text.replace("做种", "").strip())
+                            except:
+                                seeders_num = 0
+                        elif seeders_td and seeders_td.text and seeders_td.text != "--":
+                            try:
+                                seeders_num = int(seeders_td.text.strip())
+                            except:
+                                seeders_num = 0
+                        # 获取标题和链接 - 从第一个td中的a.torrent或a.folder获取
+                        title_a = tr_tag.s_ele("css:a.torrent, a.folder")
+                        if not title_a:
+                            continue
+                        title = title_a.attr("title") or title_a.text
+
+                        # 获取下载列中的磁力链接
+                        download_td = tr_tag.s_ele("xpath:./td[2]")
+                        magnet_a = download_td.s_ele("xpath:.//a[contains(@href, 'magnet:')]") if download_td else None
+                        magnet_link = magnet_a.link if magnet_a else ""
+                        # 获取详情链接 - 从第一个td中的"详情"链接获取
+                        detail_a = tr_tag.s_ele("xpath:.//a[text()='详情']")
+                        detail_link = detail_a.link if detail_a else ""
+
+                        if magnet_link and magnet_link.startswith("magnet") and magnet_link not in url_set:
+                            # 是磁力链接
+                            title_info = SearchFilterHelper().parse_title(title)
                             if not title_info.size_num:
                                 title_info.size = size_str
-                            loc2 = (By.XPATH, '//li[@class="down-list2"]//i[contains(@title, "做种")]')
-                            seeders_tags = new_tab.ele(loc2).text
+
                             results.append({
-                                "title": a_tag.attr("title") or a_tag.text,
-                                "enclosure": link,
-                                "description": a_tag.attr("title") or a_tag.text,
+                                "title": title,
+                                "enclosure": magnet_link,
+                                "description": title,
                                 "size": title_info.size_num,
-                                "seeders": int(seeders_tags or 0),
+                                "seeders": seeders_num,
                             })
-                            url_set.add(link)
-                        elif not link.startswith("magnet") and link not in to_down_urls:
-                            if not link.startswith("http"):
-                                link = f"{self.spider_url}{link}"
-                            to_down_urls.add(link)
+                        else:
+                            # 没有磁力链接，将详情链接加入到to_down_urls
+                            if detail_link and detail_link not in to_down_urls:
+                                if not detail_link.startswith("http"):
+                                    detail_link = f"{self.spider_url}{detail_link}"
+                                to_down_urls.add(detail_link)
 
                     if not to_down_urls:
                         return results
 
+                    if 0 < self.spider_max_load_result < len(to_down_urls):
+                        logger.info(
+                            f"{self.spider_name}-结果数量超过最大限制，将只处理前 {self.spider_max_load_result} 个结果")
+                        to_down_urls=list(to_down_urls)[:self.spider_max_load_result]
                     # 计算每个线程处理的URL数量
                     batch_size = max(1, len(to_down_urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL
                     url_batches = self.chunk_list(list(to_down_urls), batch_size)
 
                     logger.info(
-                        f"{self.spider_name}-将 {len(to_down_urls)} 个种子下载页分成 {len(url_batches)} 个批次处理")
+                        f"{self.spider_name}-将 {len(to_down_urls)} 个种子详情页分成 {len(url_batches)} 个批次处理")
                     # 使用线程池并发处理批次
-                    with ThreadPoolExecutor(max_workers=min(6, len(url_batches))) as tp:
+                    with ThreadPoolExecutor(max_workers=min(2, len(url_batches))) as tp:
                         future_to_batch = {
                             tp.submit(self.get_enclosure_by_down, batch): (idx, batch)
                             for idx, batch in enumerate(url_batches)
@@ -216,10 +250,11 @@ class GyingKSpider(_ExtendSpiderBase):
                 except Exception as e:
                     logger.error(
                         f"{self.spider_name}-详情页:【{down_url}】,获取种子失败: {str(e)} - {traceback.format_exc()}")
+            return results
         finally:
             if new_tab:
                 new_tab.close()
-        return results
+
 
     def get_enclosure_by_down(self, down_urls: list) -> list:
         new_tab = None
@@ -227,8 +262,6 @@ class GyingKSpider(_ExtendSpiderBase):
         url_set = set()
         try:
             for down_url in down_urls:
-                if down_url in url_set:
-                    continue
                 logger.info(f"{self.spider_name}-正在获取种子信息: {down_url}")
                 if not new_tab:
                     new_tab = self.browser.new_tab(down_url)
@@ -237,16 +270,27 @@ class GyingKSpider(_ExtendSpiderBase):
                     new_tab.get(down_url)
                 new_tab.wait.ele_displayed("css:.down321", timeout=20)
                 for li_tag in new_tab("css:ul.down321").eles("tag:li"):
-                    title = li_tag.s_ele("@tag()=div").text
-                    url_tag = li_tag.s_ele("css:span#d2")
-                    size_str = li_tag.s_ele("css:div.left").text
-                    if not url_tag:
+                    # 提取标题：第一个 div
+                    title_div = li_tag.s_ele("tag:div")
+                    if not title_div:
                         continue
-                    link = url_tag.attr("data-clipboard-text")
-                    if link.startswith("magnet") and link not in url_set:
+                    title = title_div.text.strip()
+
+                    # 提取大小：class="left" 的 div
+                    size_div = li_tag.s_ele("css:div.left")
+                    size_str = size_div.text.strip() if size_div else ""
+
+                    # 提取磁力链接：第一个 <a> 标签（磁力下载）
+                    magnet_link_tag = li_tag.s_ele("css:a[href^='magnet:']")
+                    if not magnet_link_tag:
+                        continue
+                    link = magnet_link_tag.attr("href").strip()
+
+                    if link.startswith("magnet:") and link not in url_set:
                         title_info = SearchFilterHelper().parse_title(title)
                         if not title_info.size_num:
                             title_info.size = size_str
+
                         results.append({
                             "title": title,
                             "enclosure": link,
@@ -255,10 +299,11 @@ class GyingKSpider(_ExtendSpiderBase):
                         })
                         url_set.add(link)
                 new_tab.wait(0.5, 1.5)
+            return results
         finally:
             if new_tab:
                 new_tab.close()
-        return results
+
 
 
 if __name__ == "__main__":
