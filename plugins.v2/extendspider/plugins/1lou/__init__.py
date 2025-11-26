@@ -232,7 +232,7 @@ class Bt1louSpider(_ExtendSpiderBase):
             creat_folder(tmp_folder)
 
             # 启动单线程 TokenWorker
-            worker = TokenWorker(spider=self, tmp_folder=tmp_folder, max_retries=1, token_timeout=1.0)
+            worker = TokenWorker(spider=self, tmp_folder=tmp_folder, max_retries=2, token_timeout=5.0)
             try:
                 worker.start()
                 # 逐条投喂任务（串行下载，但主线程在等待队列完成）
