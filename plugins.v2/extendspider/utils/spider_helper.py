@@ -69,13 +69,16 @@ class SpiderHelper(metaclass=SingletonClass):
         plugins.sort(key=lambda x: x.spider_order if hasattr(x, "spider_order") else 0)
         for plugin in plugins:
             plugin_id = plugin.__name__
+            conf = self._presets_spider_config.get(plugin_id) or {}
+            if not conf:
+                logger.warning(f"插件 {plugin.__name__} 没有配置，跳过")
+                continue
             if s_name and plugin_id != s_name:
                 logger.warning(f"插件 {plugin_id} 不正确")
                 continue
             try:
                 # 存储Class
                 self._extend_plugins[plugin_id] = plugin
-                conf = self._presets_spider_config.get(plugin_id) or {}
                 # 禁用的不安装
                 if conf and hasattr(conf, "spider_enable") and not conf.spider_enable:
                     continue
