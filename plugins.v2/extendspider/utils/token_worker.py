@@ -126,4 +126,4 @@ class TokenWorker(threading.Thread):
                     pass
                 self.queue.task_done()
                 # 轻微间隔，降低被风控概率
-                self._with_jitter(0.3, 0.8)
+                self._with_jitter(2, 5)

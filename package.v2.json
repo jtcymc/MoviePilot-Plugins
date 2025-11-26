@@ -35,7 +35,7 @@
     "name": "ExtendSpider",
     "description": "以插件的方式获取索引器信息，支持更多的站点（需修改app/sites/site_indexer.py和app/sites/sites.py的支持）",
     "labels": "索引器,ExtendSpider",
-    "version": "1.6.4",
+    "version": "1.6.5",
     "icon": "Extend_Spider.png",
     "author": "shaw",
     "level": 1,
@@ -49,7 +49,7 @@
       "v1.5": "改为联邦插件",
       "v1.6": "过检测优化",
       "v1.6.2": "过检测优化",
-      "v1.6.4": "过检测优化"
+      "v1.6.5": "过检测优化"
     }
   }
 }

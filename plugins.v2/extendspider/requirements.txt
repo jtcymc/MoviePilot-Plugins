@@ -3,3 +3,4 @@ DrissionPage~=4.1.0.18
 pyautogui~=0.9.54
 aiofiles
 aiohttp
+libtorrent>=2.0.0,<3.0.0

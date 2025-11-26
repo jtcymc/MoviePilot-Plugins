@@ -38,7 +38,7 @@ spider_configs = \
                         'spider_desc': 'BT影视_4k高清电影BT下载_蓝光迅雷电影下载_最新电视剧下载',
                         },
         "BtBuLuoSpider": {'spider_name': 'BtBuLuoSpider',
-                          'spider_enable': True,
+                          'spider_enable': False,
                           'spider_proxy': False,
                           'proxy_type': 'playwright',
                           'spider_url': 'https://www.btbuluo.net',
@@ -46,7 +46,7 @@ spider_configs = \
                           },
 
         "BtdxSpider": {'spider_name': 'BtdxSpider',
-                       'spider_enable': True,
+                       'spider_enable': False,
                        'spider_proxy': False,
                        'proxy_type': 'playwright',
                        'spider_url': 'https://www.btdx8.vip',
@@ -62,7 +62,7 @@ spider_configs = \
                       'spider_headless': True,
                       },
         "BtttSpider": {'spider_name': 'BtttSpider',
-                       'spider_enable': True,
+                       'spider_enable': False,
                        'spider_proxy': False,
                        'proxy_type': 'playwright',
                        'spider_url': 'https://www.bttt11.com',
@@ -83,7 +83,7 @@ spider_configs = \
                             'spider_headless': True,
                             },
         "Dytt8899Spider": {'spider_name': 'Dytt8899Spider',
-                           'spider_enable': True,
+                           'spider_enable': False,
                            'spider_proxy': False,
                            'proxy_type': 'playwright',
                            'spider_url': 'https://www.dytt8899.com',
@@ -113,7 +113,7 @@ class ExtendSpider(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jtcymc/MoviePilot-Plugins/8ed891e0441a79628da01b9618fcd85ba7a88147/icons/Extend_Spider.png"
     # 插件版本
-    plugin_version = "1.6.4"
+    plugin_version = "1.6.5"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页

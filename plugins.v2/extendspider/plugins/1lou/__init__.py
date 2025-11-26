@@ -8,7 +8,6 @@ from bs4 import BeautifulSoup
 from app.helper.search_filter import SearchFilterHelper
 from app.log import logger
 from app.schemas import SearchContext
-from app.utils.common import retry
 from app.plugins.extendspider.plugins.base import _ExtendSpiderBase
 from app.plugins.extendspider.utils.file import delete_folder, creat_folder
 from app.plugins.extendspider.utils.file_server import FileCodeBox
@@ -233,7 +232,7 @@ class Bt1louSpider(_ExtendSpiderBase):
             creat_folder(tmp_folder)
 
             # 启动单线程 TokenWorker
-            worker = TokenWorker(spider=self, tmp_folder=tmp_folder, max_retries=2, token_timeout=1.0)
+            worker = TokenWorker(spider=self, tmp_folder=tmp_folder, max_retries=1, token_timeout=1.0)
             try:
                 worker.start()
                 # 逐条投喂任务（串行下载，但主线程在等待队列完成）
@@ -246,14 +245,36 @@ class Bt1louSpider(_ExtendSpiderBase):
                 worker.stop()
             worker.join(timeout=5)
 
-            # 上传并格式化
-            results = self._upload_and_format_torrent_info(tmp_folder)
-            logger.info(f"{self.spider_name}-下载/上传完成，共获取到 {len(results)} 个种子")
+            # 种子文件下载转磁力
+            results = self._torrent_to_link(tmp_folder)
+            logger.info(f"{self.spider_name}-下载/转磁力完成，共获取到 {len(results)} 个种子")
 
         finally:
             delete_folder(tmp_folder)
             logger.info(f"{self.spider_name}-已删除临时文件夹 {tmp_folder}")
 
+        return results
+
+    def _torrent_to_link(self, tmp_folder: str):
+        import os
+        from app.plugins.extendspider.utils.libtorrent_converter import get_minimal_magnet
+        files = os.listdir(tmp_folder)  # 得到文件夹下的所有文件名称
+        results = []
+        for file in files:
+            if not os.path.isdir(file) and file.endswith(".torrent"):
+                file_path = os.path.join(tmp_folder, file)
+                link_str = get_minimal_magnet(file_path)
+                if not link_str:
+                    continue
+                title_info = SearchFilterHelper().parse_title(file)
+                results.append({
+                    "title": file,
+                    "enclosure": link_str,
+                    "description": file,
+                    # "page_url": detail_url, # 会下载字幕
+                    "size": title_info.size_num
+                })
+                logger.info(f"{self.spider_name}-找到种子: {file}")
         return results
 
     def _upload_and_format_torrent_info(self, tmp_folder: str):
