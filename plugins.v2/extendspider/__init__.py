@@ -113,7 +113,7 @@ class ExtendSpider(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jtcymc/MoviePilot-Plugins/8ed891e0441a79628da01b9618fcd85ba7a88147/icons/Extend_Spider.png"
     # 插件版本
-    plugin_version = "1.6.6"
+    plugin_version = "1.6.9"
     # 插件作者
     plugin_author = "shaw"
     # 作者主页
