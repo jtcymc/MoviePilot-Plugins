@@ -135,7 +135,7 @@ class GyingKSpider(_ExtendSpiderBase):
                                 f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理完成，获取到 {len(batch_results)} 个种子")
                     except Exception as e:
                         logger.error(f"{self.spider_name}-第 {idx + 1}/{len(url_batches)} 个批次处理失败: {str(e)}")
-                        return  []
+                        return []
         logger.info(f"{self.spider_name}-所有批次处理完成，共获取到 {len(results)} 个种子")
         return results
 
@@ -146,6 +146,7 @@ class GyingKSpider(_ExtendSpiderBase):
         results = []
         try:
             for down_url in down_urls:
+                self._wait_inner(5, 15)
                 try:
                     if not new_tab:
                         new_tab = self.browser.new_tab(down_url)
@@ -223,7 +224,7 @@ class GyingKSpider(_ExtendSpiderBase):
                     if 0 < self.spider_max_load_result < len(to_down_urls):
                         logger.info(
                             f"{self.spider_name}-结果数量超过最大限制，将只处理前 {self.spider_max_load_result} 个结果")
-                        to_down_urls=list(to_down_urls)[:self.spider_max_load_result]
+                        to_down_urls = list(to_down_urls)[:self.spider_max_load_result]
                     # 计算每个线程处理的URL数量
                     batch_size = max(1, len(to_down_urls) // self.spider_batch_size)  # 确保每个批次至少有一个URL
                     url_batches = self.chunk_list(list(to_down_urls), batch_size)
@@ -255,13 +256,13 @@ class GyingKSpider(_ExtendSpiderBase):
             if new_tab:
                 new_tab.close()
 
-
     def get_enclosure_by_down(self, down_urls: list) -> list:
         new_tab = None
         results = []
         url_set = set()
         try:
             for down_url in down_urls:
+                self._wait_inner(5, 15)
                 logger.info(f"{self.spider_name}-正在获取种子信息: {down_url}")
                 if not new_tab:
                     new_tab = self.browser.new_tab(down_url)
@@ -298,12 +299,11 @@ class GyingKSpider(_ExtendSpiderBase):
                             "size": title_info.size_num
                         })
                         url_set.add(link)
-                new_tab.wait(0.5, 1.5)
+                new_tab.wait(1, 2)
             return results
         finally:
             if new_tab:
                 new_tab.close()
-
 
 
 if __name__ == "__main__":
