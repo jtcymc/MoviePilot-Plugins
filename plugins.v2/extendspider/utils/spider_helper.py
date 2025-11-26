@@ -67,6 +67,7 @@ class SpiderHelper(metaclass=SingletonClass):
             )
         logger.debug(f"正在加载爬虫插件：{', '.join(plugin.spider_name for plugin in plugins)} ...")
         plugins.sort(key=lambda x: x.spider_order if hasattr(x, "spider_order") else 0)
+        loaded_plugins =[]
         for plugin in plugins:
             plugin_id = plugin.__name__
             conf = self._presets_spider_config.get(plugin_id) or {}
@@ -79,6 +80,7 @@ class SpiderHelper(metaclass=SingletonClass):
             try:
                 # 存储Class
                 self._extend_plugins[plugin_id] = plugin
+                logger.info(f"正在加载爬虫插件：{conf}...")
                 # 禁用的不安装
                 if conf and hasattr(conf, "spider_enable") and not conf.spider_enable:
                     continue
@@ -87,8 +89,10 @@ class SpiderHelper(metaclass=SingletonClass):
                 # 存储运行实例
                 self._extend_running_plugins[plugin_id] = plugin_obj
                 logger.info(f"加载爬虫插件：{plugin_id}成功")
+                loaded_plugins.append(plugin_id)
             except Exception as err:
                 logger.error(f"加载爬插件 {plugin_id} 出错：{str(err)} - {traceback.format_exc()}")
+        logger.info(f"已加载【{len(loaded_plugins)}】爬虫插件：{', '.join(loaded_plugins)}")
 
     def remove_plugin(self, s_name: Optional[str] = None):
         """
