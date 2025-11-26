@@ -78,12 +78,13 @@ class SpiderHelper(metaclass=SingletonClass):
                 logger.warning(f"插件 {plugin_id} 不正确")
                 continue
             try:
-                # 存储Class
-                self._extend_plugins[plugin_id] = plugin
+
                 logger.info(f"正在加载爬虫插件：{conf}...")
                 # 禁用的不安装
                 if conf and hasattr(conf, "spider_enable") and not conf.spider_enable:
                     continue
+                # 存储Class
+                self._extend_plugins[plugin_id] = plugin
                 # 生成实例
                 plugin_obj = plugin(conf)
                 # 存储运行实例
